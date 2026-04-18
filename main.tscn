@@ -1,0 +1,74 @@
+[gd_scene format=3 uid="uid://cqrfiqbyscd51"]
+
+[ext_resource type="Script" uid="uid://ckp7cbewf20gk" path="res://main.gd" id="1"]
+[ext_resource type="Script" uid="uid://cdkwgq8pf7of5" path="res://camera_controller.gd" id="2"]
+[ext_resource type="Script" uid="uid://bswuwq3e25pit" path="res://sun_moon_controller.gd" id="3"]
+[ext_resource type="Script" uid="uid://bxhp2m1mirc1n" path="res://effects.gd" id="EffectsScript"]
+[ext_resource type="Script" uid="uid://dgtif41e31t3a" path="res://entity_manager.gd" id="EntityManagerScript"]
+[ext_resource type="Script" uid="uid://bkjlbv7036vyk" path="res://login_ui.gd" id="LoginUIScript"]
+[ext_resource type="Script" uid="uid://dtle8xjb05202" path="res://player_controller.gd" id="PlayerControllerScript"]
+[ext_resource type="Script" uid="uid://bo4dreral1k5e" path="res://targeting.gd" id="TargetingScript"]
+[ext_resource type="Script" uid="uid://c1a1epmvwr04f" path="res://terrain.gd" id="TerrainScript"]
+
+[sub_resource type="PhysicalSkyMaterial" id="4"]
+
+[sub_resource type="Sky" id="5"]
+sky_material = SubResource("4")
+
+[sub_resource type="Environment" id="6"]
+background_mode = 2
+sky = SubResource("5")
+ambient_light_source = 2
+ambient_light_color = Color(0.12, 0.13, 0.2, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_h2yge"]
+radius = 50.0
+height = 100.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_h2yge"]
+shading_mode = 0
+albedo_color = Color(0.55, 0.6, 0.7, 1)
+
+[node name="Main" type="Node3D" unique_id=113771856]
+script = ExtResource("1")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1159169976]
+script = ExtResource("2")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1200541772]
+shadow_enabled = true
+script = ExtResource("3")
+
+[node name="MoonLight3D" type="DirectionalLight3D" parent="." unique_id=487850395]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1756417860]
+environment = SubResource("6")
+
+[node name="Terrain" type="Node3D" parent="." unique_id=666666666]
+script = ExtResource("TerrainScript")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=909115655]
+
+[node name="StatusLabel" type="Label" parent="CanvasLayer" unique_id=1252034966]
+offset_right = 400.0
+offset_bottom = 48.0
+text = "Connecting..."
+
+[node name="Moon" type="MeshInstance3D" parent="." unique_id=450768437]
+mesh = SubResource("SphereMesh_h2yge")
+surface_material_override/0 = SubResource("StandardMaterial3D_h2yge")
+
+[node name="EntityManager" type="Node" parent="." unique_id=111111111]
+script = ExtResource("EntityManagerScript")
+
+[node name="PlayerController" type="Node" parent="." unique_id=222222222]
+script = ExtResource("PlayerControllerScript")
+
+[node name="Targeting" type="Node" parent="." unique_id=333333333]
+script = ExtResource("TargetingScript")
+
+[node name="LoginUI" type="CanvasLayer" parent="." unique_id=444444444]
+script = ExtResource("LoginUIScript")
+
+[node name="Effects" type="Node" parent="." unique_id=555555555]
+script = ExtResource("EffectsScript")

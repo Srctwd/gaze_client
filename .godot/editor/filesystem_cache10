@@ -1,0 +1,17 @@
+63f7b34db8d8cdea90c76aacccf841ec
+::res://::1776537378
+camera_controller.gd::GDScript::5005399056486823792::1776382434::0::1::::CameraController<>Camera3D<><>0<>0<><>::
+effects.gd::GDScript::4016174373974897169::1776529295::0::1::::<>Node<><>0<>0<><>::
+entity_manager.gd::GDScript::7620114518708562324::1776519319::0::1::::<>Node<><>0<>0<><>::
+icon.svg::CompressedTexture2D::6382093330972973226::1776217981::1776218048::1::::<><><>0<>0<>40eb9cc250cc251cfb31e1e64fd2ce89<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
+login_ui.gd::GDScript::3107559346172939750::1776519972::0::1::::<>CanvasLayer<><>0<>0<><>::
+main.gd::GDScript::5507642045143678370::1776519991::0::1::::<>Node3D<><>0<>0<><>::
+main.tscn::PackedScene::5931276001761802002::1776534767::0::1::::<><><>0<>0<><>::uid://ckp7cbewf20gk::::res://main.gd<>uid://cdkwgq8pf7of5::::res://camera_controller.gd<>uid://bswuwq3e25pit::::res://sun_moon_controller.gd<>res://assets/void1.png<>res://entity_manager.gd<>res://player_controller.gd<>res://targeting.gd<>res://login_ui.gd<>res://effects.gd<>res://terrain.gd
+network.gd::GDScript::2931942868888989415::1776528112::0::1::::<>Node<><>0<>0<><>::
+player_controller.gd::GDScript::8515861256686851513::1776524394::0::1::::<>Node<><>0<>0<><>::
+sun_moon_controller.gd::GDScript::3696490690935381503::1776440381::0::1::::<>DirectionalLight3D<><>0<>0<><>::
+targeting.gd::GDScript::3429144195338780392::1776526633::0::1::::<>Node<><>0<>0<><>::
+terrain.gd::GDScript::6599337894334738251::1776537328::0::1::::<>Node3D<><>0<>0<><>::
+world_data.gd::GDScript::1353486325204392058::1776537278::0::1::::WorldData<>RefCounted<><>0<>0<><>::
+::res://assets/::1776441518
+void1.png::CompressedTexture2D::6941273163265254612::1776441354::1776441518::1::::<><><>0<>0<>8ee53b0323a95ebb5fa79e35c281b16c<>res://.godot/imported/void1.png-fe3d04b810f00b587682207eaa0d2635.s3tc.ctex::
