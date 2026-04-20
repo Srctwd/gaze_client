@@ -6,9 +6,9 @@ extends DirectionalLight3D
 var _sync_game_time: float = 0.0
 var _sync_real_time: float = 0.0
 
-const GAME_SPEED: float  = 14400.0
+const GAME_SPEED: float  = 12.0
 const DAY: float         = 86400.0
-const LUNAR_CYCLE: float = 2592000.0   # 2.5 real days at 12× speed (10 at 3×)
+const LUNAR_CYCLE: float = 2600000.0   # 2.5 real days at 12× speed (10 at 3×)
 const SKY_DIST: float    = 800.0
 
 func _ready() -> void:

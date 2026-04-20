@@ -22,8 +22,8 @@ ambient_light_source = 2
 ambient_light_color = Color(0.12, 0.13, 0.2, 1)
 
 [sub_resource type="SphereMesh" id="SphereMesh_h2yge"]
-radius = 50.0
-height = 100.0
+radius = 180.0
+height = 360.0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_h2yge"]
 shading_mode = 0

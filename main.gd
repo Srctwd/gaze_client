@@ -8,8 +8,6 @@ extends Node3D
 @onready var login_ui:         CanvasLayer     = $LoginUI
 
 func _ready() -> void:
-	_build_crosshair()
-
 	Network.connected.connect(_on_connected)
 	Network.disconnected.connect(_on_disconnected)
 	Network.login_ok.connect(_on_login_ok)
@@ -19,18 +17,6 @@ func _ready() -> void:
 	camera.first_person_changed.connect(entity_manager.set_first_person)
 	entity_manager.player_moved.connect(camera.follow)
 
-func _build_crosshair() -> void:
-	var dot := ColorRect.new()
-	dot.color = Color(1, 1, 1, 0.8)
-	dot.anchor_left   = 0.5
-	dot.anchor_top    = 0.5
-	dot.anchor_right  = 0.5
-	dot.anchor_bottom = 0.5
-	dot.offset_left   = -2.0
-	dot.offset_top    = -2.0
-	dot.offset_right  =  2.0
-	dot.offset_bottom =  2.0
-	$CanvasLayer.add_child(dot)
 
 func _on_login_pressed(username: String, password: String) -> void:
 	var user_bytes := username.to_utf8_buffer()

@@ -7,6 +7,7 @@ signal time_of_day(game_seconds: float)
 signal login_ok(net_id: int)
 signal login_fail
 signal cast_ok(actor_id: int, effect: int, target_id: int)
+signal unit_destroyed(net_id: int)
 
 const HOST     = "127.0.0.1"
 const PORT     = 7777
@@ -59,6 +60,8 @@ func _parse(data: PackedByteArray) -> void:
 				login_fail.emit()
 		0x09: # CastOk: actor(u32) effect(u8) target(u32)
 			cast_ok.emit(data.decode_u32(1), data[5], data.decode_u32(6))
+		0x0B: # DestroyUnit: net_id(u32)
+			unit_destroyed.emit(data.decode_u32(1))
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

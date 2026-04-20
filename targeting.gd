@@ -72,19 +72,20 @@ func _select_target() -> void:
 	print("[target] sending net_id=", chosen, " connected=", Network.is_connected_to_server())
 	Network.send(pkt)
 
-func _get_mat(net_id: int) -> StandardMaterial3D:
+func _get_mi(net_id: int) -> MeshInstance3D:
 	if not _entity_manager.entities.has(net_id):
 		return null
-	var mi := (_entity_manager.entities[net_id] as StaticBody3D).get_child(0) as MeshInstance3D
-	if mi == null:
-		return null
-	return mi.mesh.surface_get_material(0) as StandardMaterial3D
+	return (_entity_manager.entities[net_id] as StaticBody3D).get_child(0) as MeshInstance3D
 
 func _set_highlight(net_id: int, on: bool) -> void:
-	var mat := _get_mat(net_id)
-	if mat == null:
+	var mi := _get_mi(net_id)
+	if mi == null:
 		return
-	mat.emission_enabled = on
 	if on:
-		mat.emission              = Color(0.2, 0.5, 1.0)
+		var mat := StandardMaterial3D.new()
+		mat.emission_enabled           = true
+		mat.emission                   = Color(0.2, 0.5, 1.0)
 		mat.emission_energy_multiplier = 1.3
+		mi.set_surface_override_material(0, mat)
+	else:
+		mi.set_surface_override_material(0, null)
