@@ -2,12 +2,13 @@ extends Node
 
 signal connected
 signal disconnected
-signal unit_pos(net_id: int, pos: Vector3)
+signal unit_pos(net_id: int, pos: Vector3, rot_y: float)
 signal time_of_day(game_seconds: float)
 signal login_ok(net_id: int)
 signal login_fail
-signal cast_ok(actor_id: int, effect: int, target_id: int)
+signal cast_ok(actor_id: int, effect: int, target_id: int, spell_type: int)
 signal unit_destroyed(net_id: int)
+signal vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana: float)
 
 const HOST     = "127.0.0.1"
 const PORT     = 7777
@@ -48,9 +49,10 @@ func _parse(data: PackedByteArray) -> void:
 	if data.is_empty():
 		return
 	match data[0]:
-		0x02: # UnitPos: net_id(u32) x y z (f32×3)
+		0x02: # UnitPos: net_id(u32) x y z rot_y (f32×4)
 			unit_pos.emit(data.decode_u32(1),
-				Vector3(data.decode_float(5), data.decode_float(9), data.decode_float(13)))
+				Vector3(data.decode_float(5), data.decode_float(9), data.decode_float(13)),
+				data.decode_float(17))
 		0x04: # TimeOfDay: game_seconds(f32)
 			time_of_day.emit(data.decode_float(1))
 		0x06: # LoginResponse: status(u8) [net_id(u32)]
@@ -58,10 +60,14 @@ func _parse(data: PackedByteArray) -> void:
 				login_ok.emit(data.decode_u32(2))
 			else:
 				login_fail.emit()
-		0x09: # CastOk: actor(u32) effect(u8) target(u32)
-			cast_ok.emit(data.decode_u32(1), data[5], data.decode_u32(6))
+		0x09: # CastOk: actor(u32) effect(u8) target(u32) spell_type(u8)
+			cast_ok.emit(data.decode_u32(1), data[5], data.decode_u32(6), data[10])
 		0x0B: # DestroyUnit: net_id(u32)
 			unit_destroyed.emit(data.decode_u32(1))
+		0x0C: # VitalUpdate: net_id(u32) hp max_hp mana max_mana (f32×4)
+			vital_update.emit(data.decode_u32(1),
+				data.decode_float(5), data.decode_float(9),
+				data.decode_float(13), data.decode_float(17))
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

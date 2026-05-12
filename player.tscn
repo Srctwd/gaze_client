@@ -18,9 +18,3 @@ mesh = SubResource("2")
 [node name="Collision" type="CollisionShape3D" parent="."]
 shape = SubResource("3")
 
-[node name="Torch" type="OmniLight3D" parent="."]
-position = Vector3(0.4, 1.2, 0.0)
-light_color = Color(1.0, 0.6, 0.2, 1.0)
-light_energy = 2.5
-omni_range = 10.0
-omni_attenuation = 1.5

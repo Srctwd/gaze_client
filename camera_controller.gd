@@ -7,7 +7,9 @@ var target:       Vector3 = Vector3.ZERO
 var yaw:          float   = 0.0
 var pitch:        float   = -0.5
 var distance:     float   = 12.0
-var first_person: bool    = false
+var first_person: bool    = true
+
+var _hud: CanvasLayer
 
 const MOUSE_SENSITIVITY: float = 0.005
 const ZOOM_SPEED:        float = 1.5
@@ -19,19 +21,23 @@ const PITCH_FP_MIN:      float = -1.5
 const PITCH_FP_MAX:      float =  1.5
 
 func _ready() -> void:
-	_apply()
+	_hud = load("res://hud.gd").new()
+	add_child(_hud)
+
+	first_person_changed.emit(first_person)
+
+func show_hud() -> void: _hud.show_bars()
+func hide_hud() -> void: _hud.hide_bars()
+
+func set_health(ratio: float, max_val: float = 100.0) -> void:
+	_hud.set_health(ratio, max_val)
+
+func set_mana(ratio: float, max_val: float = 100.0) -> void:
+	_hud.set_mana(ratio, max_val)
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.keycode == KEY_F \
-			and event.pressed and not event.echo:
-		first_person = not first_person
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if first_person \
-						 else Input.MOUSE_MODE_VISIBLE
-		first_person_changed.emit(first_person)
-		_apply()
-		return
-
 	if event is InputEventMouseMotion \
+			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
 			and (first_person or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
 		yaw   -= event.relative.x * MOUSE_SENSITIVITY
 		pitch  = clamp(pitch - event.relative.y * MOUSE_SENSITIVITY,
@@ -39,13 +45,6 @@ func _input(event: InputEvent) -> void:
 				PITCH_FP_MAX if first_person else PITCH_MAX)
 		_apply()
 
-	if not first_person and event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			distance = max(ZOOM_MIN, distance - ZOOM_SPEED)
-			_apply()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			distance = min(ZOOM_MAX, distance + ZOOM_SPEED)
-			_apply()
 
 func follow(pos: Vector3) -> void:
 	target = pos

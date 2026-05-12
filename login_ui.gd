@@ -1,6 +1,6 @@
 extends CanvasLayer
 
-signal login_pressed(username: String, password: String)
+signal login_pressed(email: String, passkey: String)
 
 var _username_field: LineEdit
 var _password_field: LineEdit
@@ -24,11 +24,11 @@ func _ready() -> void:
 	vbox.add_child(title)
 
 	_username_field = LineEdit.new()
-	_username_field.placeholder_text = "Username"
+	_username_field.placeholder_text = "Email"
 	vbox.add_child(_username_field)
 
 	_password_field = LineEdit.new()
-	_password_field.placeholder_text = "Password"
+	_password_field.placeholder_text = "Passkey"
 	_password_field.secret = true
 	vbox.add_child(_password_field)
 

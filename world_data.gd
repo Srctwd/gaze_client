@@ -1,13 +1,15 @@
 class_name WorldData
 extends RefCounted
 
-var chunk_cells : int
-var chunks_x    : int
-var chunks_z    : int
-var cell_size   : float
-var _chunks     : Array = []
-var _material   : Material
-var _mat_cave   : Material
+var chunk_cells     : int
+var chunks_x        : int
+var chunks_z        : int
+var cell_size       : float
+var _chunks         : Array = []
+var _static_objects : Array = []
+var _material     : Material
+var _mat_cave     : Material
+var _grass_meshes : Array = []
 
 
 func load(path: String) -> bool:
@@ -16,10 +18,11 @@ func load(path: String) -> bool:
 		push_error("WorldData: cannot open " + path)
 		return false
 
-	chunk_cells = f.get_32()
-	chunks_x    = f.get_32()
-	chunks_z    = f.get_32()
-	cell_size   = f.get_float()
+	chunk_cells        = f.get_32()
+	chunks_x           = f.get_32()
+	chunks_z           = f.get_32()
+	cell_size          = f.get_float()
+	var static_offset  := f.get_32()
 
 	var total  := chunks_x * chunks_z
 	var stride := chunk_cells + 1
@@ -48,18 +51,35 @@ func load(path: String) -> bool:
 			h1[j] = f.get_float()
 
 		var h2 : Array[float] = []
+		var h3 : Array[float] = []
 		if types[i] == 2:
 			h2.resize(cells)
 			for j in range(cells):
 				h2[j] = f.get_float()
+			h3.resize(cells)
+			for j in range(cells):
+				h3[j] = f.get_float()
 
-		_chunks.append({ "type": types[i], "h1": h1, "h2": h2 })
+		_chunks.append({ "type": types[i], "h1": h1, "h2": h2, "h3": h3 })
+
+	_static_objects.clear()
+	f.seek(static_offset)
+	var obj_count := f.get_32()
+	for _i in range(obj_count):
+		var type   := f.get_8()
+		var ox_    := f.get_float()
+		var oz_    := f.get_float()
+		var radius := f.get_float()
+		_static_objects.append({ "type": type, "x": ox_, "z": oz_, "radius": radius })
 
 	f.close()
 
 	var holes := _find_holes()
-	_material = _make_surface_mat(Color(0.35, 0.52, 0.28), holes)
-	_mat_cave = _make_standard_mat(Color(0.25, 0.22, 0.20))
+	_material  = _make_surface_mat(Color(0.35, 0.52, 0.28), holes)
+	_mat_cave  = _make_standard_mat(Color(0.25, 0.22, 0.20))
+	var m := _merge_glb_mesh("res://assets/stylized_grass_bush.glb")
+	if m:
+		_grass_meshes.append(m)
 	return true
 
 
@@ -72,8 +92,65 @@ func spawn_into(parent: Node3D) -> void:
 		var cz := int(i / chunks_x)
 		var origin := Vector3(ox + cx * chunk_cells * cell_size, 0.0, oz + cz * chunk_cells * cell_size)
 		parent.add_child(_make_chunk(_chunks[i].h1, origin, _material))
+		parent.add_child(_make_grass_chunk(_chunks[i].h1, origin))
 		if _chunks[i].type == 2:
 			parent.add_child(_make_chunk(_chunks[i].h2, origin, _mat_cave))
+			parent.add_child(_make_chunk(_chunks[i].h3, origin, _mat_cave))
+
+	for obj in _static_objects:
+		var wy := _get_height_at(obj.x, obj.z)
+		var mi  := MeshInstance3D.new()
+		if obj.type == 0:
+			var m    := CylinderMesh.new()
+			m.top_radius    = obj.radius * 0.4
+			m.bottom_radius = obj.radius
+			m.height        = 3.0
+			mi.mesh         = m
+			var mat         := StandardMaterial3D.new()
+			mat.albedo_color = Color(0.18, 0.42, 0.12)
+			mi.material_override = mat
+			mi.position = Vector3(obj.x, wy + 1.5, obj.z)
+		else:
+			var m   := BoxMesh.new()
+			m.size  = Vector3(obj.radius * 2.0, obj.radius * 1.2, obj.radius * 2.0)
+			mi.mesh = m
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = Color(0.45, 0.42, 0.40)
+			mi.material_override = mat
+			mi.position = Vector3(obj.x, wy + obj.radius * 0.6, obj.z)
+		parent.add_child(mi)
+
+
+func _get_height_at(wx: float, wz: float) -> float:
+	var world_ox := -(chunks_x * chunk_cells * cell_size * 0.5)
+	var world_oz := -(chunks_z * chunk_cells * cell_size * 0.5)
+	var lx := wx - world_ox
+	var lz := wz - world_oz
+	var cx := int(lx / (chunk_cells * cell_size))
+	var cz := int(lz / (chunk_cells * cell_size))
+	cx = clampi(cx, 0, chunks_x - 1)
+	cz = clampi(cz, 0, chunks_z - 1)
+	var chunk_ox := cx * chunk_cells * cell_size
+	var chunk_oz := cz * chunk_cells * cell_size
+	var local_x  := lx - chunk_ox
+	var local_z  := lz - chunk_oz
+	var gx := int(local_x / cell_size)
+	var gz := int(local_z / cell_size)
+	gx = clampi(gx, 0, chunk_cells - 1)
+	gz = clampi(gz, 0, chunk_cells - 1)
+	var stride := chunk_cells + 1
+	var h1 : Array = (_chunks[cz * chunks_x + cx] as Dictionary)["h1"]
+	var tl  := gz * stride + gx
+	var h00 := h1[tl]           as float
+	var h10 := h1[tl + 1]       as float
+	var h01 := h1[tl + stride]  as float
+	var h11 := h1[tl + stride + 1] as float
+	var rx  := fmod(local_x, cell_size) / cell_size
+	var rz  := fmod(local_z, cell_size) / cell_size
+	if rx + rz <= 1.0:
+		return h00 + (h10 - h00) * rx + (h01 - h00) * rz
+	else:
+		return h11 + (h01 - h11) * (1.0 - rx) + (h10 - h11) * (1.0 - rz)
 
 
 func _make_chunk(h1: Array, origin: Vector3, mat: Material) -> MeshInstance3D:
@@ -155,7 +232,8 @@ func _make_surface_mat(color: Color, holes: Array) -> Material:
 	sh.code = """
 shader_type spatial;
 render_mode cull_disabled;
-uniform vec4 albedo_top   : source_color = vec4(1.0);
+uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, repeat_enable;
+uniform float tile_scale = 2.0;
 uniform vec4 albedo_bottom: source_color = vec4(0.25, 0.22, 0.20, 1.0);
 uniform vec2 hole_centers[16];
 uniform float hole_radii[16];
@@ -171,13 +249,15 @@ void fragment() {
 	for (int i = 0; i < hole_count; i++) {
 		if (length(world_pos.xz - hole_centers[i]) < hole_radii[i]) discard;
 	}
-	ALBEDO = FRONT_FACING ? albedo_top.rgb : albedo_bottom.rgb;
+	vec4 tex = texture(albedo_texture, world_pos.xz / 66.0);
+	ALBEDO = FRONT_FACING ? tex.rgb * vec3(0.85, 1.2, 0.75) : albedo_bottom.rgb;
 }
 """
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	mat.set_shader_parameter("albedo_top",    color)
-	mat.set_shader_parameter("albedo_bottom", Color(0.25, 0.22, 0.20))
+	mat.set_shader_parameter("albedo_texture", load("res://assets/tileable_grass.png"))
+	mat.set_shader_parameter("tile_scale",     21.0)
+	mat.set_shader_parameter("albedo_bottom",  Color(0.25, 0.22, 0.20))
 	mat.set_shader_parameter("hole_count", mini(holes.size(), 16))
 
 	var centers := PackedVector2Array()
@@ -192,3 +272,89 @@ void fragment() {
 	mat.set_shader_parameter("hole_centers", centers)
 	mat.set_shader_parameter("hole_radii", radii)
 	return mat
+
+
+func _merge_glb_mesh(path: String) -> ArrayMesh:
+	var scene := load(path) as PackedScene
+	if not scene:
+		return null
+	var root   := scene.instantiate()
+	var result := ArrayMesh.new()
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		for s in mi.mesh.get_surface_count():
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			st.append_from(mi.mesh, s, mi.transform)
+			var tmp := st.commit()
+			result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, tmp.surface_get_arrays(0))
+			result.surface_set_material(result.get_surface_count() - 1, mi.mesh.surface_get_material(s))
+	root.free()
+	return result
+
+
+func _make_grass_chunk(h1: Array, origin: Vector3) -> Node3D:
+	var container := Node3D.new()
+	container.position = origin
+
+	if _grass_meshes.is_empty():
+		return container
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(origin.x) + str(origin.z))
+
+	var xforms : Array = []
+	for _i in _grass_meshes.size():
+		xforms.append([])
+
+	var stride := chunk_cells + 1
+	for gz in range(chunk_cells):
+		for gx in range(chunk_cells):
+			var tl := gz * stride + gx
+			if is_nan(h1[tl]) or is_nan(h1[tl+1]) or is_nan(h1[tl+stride]) or is_nan(h1[tl+stride+1]):
+				continue
+			if rng.randf() > 0.25:
+				continue
+			for _b in range(4):
+				var rx := rng.randf()
+				var rz := rng.randf()
+				var fx := (gx + rx) * cell_size
+				var fz := (gz + rz) * cell_size
+				var h00 := h1[tl] as float
+				var h10 := h1[tl + 1] as float
+				var h01 := h1[tl + stride] as float
+				var h11 := h1[tl + stride + 1] as float
+				var hy: float
+				if rx + rz <= 1.0:
+					hy = h00 + (h10 - h00) * rx + (h01 - h00) * rz
+				else:
+					hy = h11 + (h01 - h11) * (1.0 - rx) + (h10 - h11) * (1.0 - rz)
+				var normal: Vector3
+				if rx + rz <= 1.0:
+					normal = Vector3(0.0, h01 - h00, cell_size).cross(Vector3(cell_size, h10 - h00, 0.0)).normalized()
+				else:
+					normal = Vector3(-cell_size, h01 - h10, cell_size).cross(Vector3(0.0, h11 - h10, cell_size)).normalized()
+				var rot   := rng.randf() * TAU
+				var scale := rng.randf_range(0.0005, 0.0010)
+				var fwd   := Vector3(cos(rot), 0.0, sin(rot)).slide(normal).normalized()
+				var right := normal.cross(fwd).normalized()
+				var basis := Basis(right, normal, -fwd).scaled(Vector3.ONE * scale)
+				var t     := Transform3D(basis, Vector3(fx, hy, fz))
+				var idx   := rng.randi() % _grass_meshes.size()
+				(xforms[idx] as Array).append(t)
+
+	for i in _grass_meshes.size():
+		var arr := xforms[i] as Array
+		if arr.is_empty():
+			continue
+		var mm := MultiMesh.new()
+		mm.mesh             = _grass_meshes[i]
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.instance_count   = arr.size()
+		for j in arr.size():
+			mm.set_instance_transform(j, arr[j])
+		var mmi       := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		container.add_child(mmi)
+
+	return container

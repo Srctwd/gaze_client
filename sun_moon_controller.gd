@@ -13,6 +13,8 @@ const SKY_DIST: float    = 800.0
 
 func _ready() -> void:
 	Network.time_of_day.connect(_on_time_of_day)
+	shadow_opacity = 0.4
+	moon.shadow_opacity = 0.3
 
 func _on_time_of_day(secs: float) -> void:
 	_sync_game_time = secs
