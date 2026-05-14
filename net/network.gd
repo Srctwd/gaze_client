@@ -2,7 +2,7 @@ extends Node
 
 signal connected
 signal disconnected
-signal unit_spawned(net_id: int, unit_type: int, pos: Vector3)
+signal unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3)
 signal unit_pos(net_id: int, pos: Vector3, rot_y: float)
 signal time_of_day(game_seconds: float)
 signal login_ok(net_id: int)
@@ -50,9 +50,9 @@ func _parse(data: PackedByteArray) -> void:
 	if data.is_empty():
 		return
 	match data[0]:
-		0x01: # SpawnUnit: net_id(u32) unit_type(u8) x y z (f32×3)
-			unit_spawned.emit(data.decode_u32(1), data[5],
-				Vector3(data.decode_float(6), data.decode_float(10), data.decode_float(14)))
+		0x01: # SpawnUnit: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3)
+			unit_spawned.emit(data.decode_u32(1), data[5], data[6],
+				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)))
 		0x02: # UnitPos: net_id(u32) x y z rot_y (f32×4)
 			unit_pos.emit(data.decode_u32(1),
 				Vector3(data.decode_float(5), data.decode_float(9), data.decode_float(13)),

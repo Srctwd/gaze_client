@@ -91,7 +91,7 @@ func load(path: String) -> bool:
 	_rock_scene = load("res://assets/rock01.glb")
 	_veg_specs = [
 		{ "scene": load("res://assets/fern01.glb"),              "density": 0.12, "upright": false, "scale_min": 3.0,    "scale_max": 6.0,    "seed_offset": 1.0 },
-		{ "scene": load("res://assets/forest_elf_archer.glb"),   "density": 0.015,"upright": true,  "scale_min": 1.0,    "scale_max": 1.0,    "seed_offset": 7.0 },
+		{ "scene": load("res://assets/slime_base.glb"),           "density": 0.015,"upright": true,  "scale_min": 1.0,    "scale_max": 1.0,    "seed_offset": 7.0 },
 	]
 	return true
 
