@@ -1,14 +1,14 @@
 [gd_scene format=3 uid="uid://cqrfiqbyscd51"]
 
 [ext_resource type="Script" uid="uid://ckp7cbewf20gk" path="res://main.gd" id="1"]
-[ext_resource type="Script" uid="uid://cdkwgq8pf7of5" path="res://camera_controller.gd" id="2"]
-[ext_resource type="Script" uid="uid://bswuwq3e25pit" path="res://sun_moon_controller.gd" id="3"]
-[ext_resource type="Script" uid="uid://bxhp2m1mirc1n" path="res://effects.gd" id="EffectsScript"]
-[ext_resource type="Script" uid="uid://dgtif41e31t3a" path="res://entity_manager.gd" id="EntityManagerScript"]
-[ext_resource type="Script" uid="uid://bkjlbv7036vyk" path="res://login_ui.gd" id="LoginUIScript"]
-[ext_resource type="Script" uid="uid://dtle8xjb05202" path="res://player_controller.gd" id="PlayerControllerScript"]
-[ext_resource type="Script" uid="uid://bo4dreral1k5e" path="res://targeting.gd" id="TargetingScript"]
-[ext_resource type="Script" uid="uid://c1a1epmvwr04f" path="res://terrain.gd" id="TerrainScript"]
+[ext_resource type="Script" uid="uid://cdkwgq8pf7of5" path="res://game/camera_controller.gd" id="2"]
+[ext_resource type="Script" uid="uid://bswuwq3e25pit" path="res://world/sun_moon_controller.gd" id="3"]
+[ext_resource type="Script" uid="uid://bxhp2m1mirc1n" path="res://game/effects.gd" id="EffectsScript"]
+[ext_resource type="Script" uid="uid://dgtif41e31t3a" path="res://game/entity_manager.gd" id="EntityManagerScript"]
+[ext_resource type="Script" uid="uid://bkjlbv7036vyk" path="res://ui/login_ui.gd" id="LoginUIScript"]
+[ext_resource type="Script" uid="uid://dtle8xjb05202" path="res://game/player_controller.gd" id="PlayerControllerScript"]
+[ext_resource type="Script" uid="uid://bo4dreral1k5e" path="res://game/targeting.gd" id="TargetingScript"]
+[ext_resource type="Script" uid="uid://c1a1epmvwr04f" path="res://world/terrain.gd" id="TerrainScript"]
 
 [sub_resource type="PhysicalSkyMaterial" id="4"]
 
@@ -19,7 +19,8 @@ sky_material = SubResource("4")
 background_mode = 2
 sky = SubResource("5")
 ambient_light_source = 2
-ambient_light_color = Color(0.12, 0.13, 0.2, 1)
+ambient_light_color = Color(0.6, 0.65, 0.8, 1)
+ambient_light_energy = 0.5
 
 [sub_resource type="SphereMesh" id="SphereMesh_h2yge"]
 radius = 180.0
@@ -48,7 +49,6 @@ environment = SubResource("6")
 script = ExtResource("TerrainScript")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=909115655]
-
 
 [node name="Moon" type="MeshInstance3D" parent="." unique_id=450768437]
 mesh = SubResource("SphereMesh_h2yge")

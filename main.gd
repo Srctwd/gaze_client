@@ -15,7 +15,7 @@ var character_ui:  CanvasLayer
 var _black_bg:     CanvasLayer
 
 func _ready() -> void:
-	character_ui = preload("res://character_ui.gd").new()
+	character_ui = preload("res://ui/character_ui.gd").new()
 	add_child(character_ui)
 
 	_black_bg = CanvasLayer.new()
@@ -66,14 +66,7 @@ func _on_login_response(_result: int, code: int, _headers: PackedStringArray, bo
 
 
 func _on_character_confirmed(char_id: int) -> void:
-	var token_bytes := _token.to_utf8_buffer()
-	var pkt := PackedByteArray()
-	pkt.append(0x05)
-	pkt.append(token_bytes.size())
-	pkt.append_array(token_bytes)
-	pkt.resize(pkt.size() + 4)
-	pkt.encode_u32(pkt.size() - 4, char_id)
-	Network.send(pkt)
+	Network.send(Protocol.pkt_login(_token, char_id))
 
 
 func _on_connected() -> void:
