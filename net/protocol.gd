@@ -18,9 +18,11 @@ const VITAL_UPDATE   := 0x0C
 const UNIT_PLAYER    := 0x01
 const UNIT_MINOTAUR  := 0x02
 const UNIT_MINO_MAGE := 0x03
+const UNIT_SLIME     := 0x04
 
 # ── Action types ───────────────────────────────────────────────────────────
 const ACTION_JUMP    := 0x01
+const ACTION_PUNCH   := 0x02
 
 # ── Packet builders (client → server) ─────────────────────────────────────
 static func pkt_login(token: String, char_id: int) -> PackedByteArray:
@@ -34,12 +36,13 @@ static func pkt_login(token: String, char_id: int) -> PackedByteArray:
 	pkt.encode_u32(2 + token_bytes.size(), char_id)
 	return pkt
 
-static func pkt_move_intent(dir: Vector2) -> PackedByteArray:
+static func pkt_move_intent(dir: Vector2, rot_y: float) -> PackedByteArray:
 	var pkt := PackedByteArray()
-	pkt.resize(9)
+	pkt.resize(13)
 	pkt[0] = MOVE_INTENT
 	pkt.encode_float(1, dir.x)
 	pkt.encode_float(5, dir.y)
+	pkt.encode_float(9, rot_y)
 	return pkt
 
 static func pkt_target(net_id: int) -> PackedByteArray:

@@ -24,11 +24,18 @@ const _VARIANT_PALETTES := {
 		Color(0.10, 0.50, 0.50),  # 2 teal
 		Color(0.20, 0.10, 0.50),  # 3 dark purple
 	],
+	Protocol.UNIT_SLIME: [
+		Color(0.20, 0.75, 0.20),  # 0 green
+		Color(0.15, 0.30, 0.90),  # 1 blue
+		Color(0.85, 0.15, 0.15),  # 2 red
+		Color(0.12, 0.08, 0.12),  # 3 black
+	],
 }
 
 func _ready() -> void:
 	_mesh_by_type[Protocol.UNIT_MINOTAUR]  = load("res://assets/minotaur.obj")
 	_mesh_by_type[Protocol.UNIT_MINO_MAGE] = load("res://assets/stone_man.glb")
+	_mesh_by_type[Protocol.UNIT_SLIME]     = load("res://assets/slime_base.glb")
 
 	Network.unit_spawned.connect(_on_unit_spawned)
 	Network.unit_pos.connect(_on_unit_pos)
@@ -55,13 +62,13 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3) -
 	entities[net_id] = body
 	_apply_variant(body, unit_type, variant)
 
-func _on_unit_pos(net_id: int, pos: Vector3, rot_y: float) -> void:
+func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float) -> void:
 	if not entities.has(net_id):
-		var body := _make_body(net_id, Protocol.UNIT_MINO_MAGE)
+		var body := _make_body(net_id, unit_type)
 		body.position = pos
 		get_parent().add_child(body)
 		entities[net_id] = body
-		_apply_variant(body, Protocol.UNIT_MINO_MAGE, 0)
+		_apply_variant(body, unit_type, variant)
 	var body := entities[net_id] as StaticBody3D
 	body.position   = pos
 	body.rotation.y = rot_y + PI
@@ -101,8 +108,5 @@ func _apply_variant(body: Node3D, unit_type: int, variant: int) -> void:
 	var tint        := Color(base.r * brightness, base.g * brightness, base.b * brightness)
 	for mi: MeshInstance3D in body.find_children("*", "MeshInstance3D", true, false):
 		var mat := StandardMaterial3D.new()
-		var src := mi.get_active_material(0)
-		if src is StandardMaterial3D:
-			mat = (src as StandardMaterial3D).duplicate() as StandardMaterial3D
 		mat.albedo_color = tint
 		mi.material_override = mat
