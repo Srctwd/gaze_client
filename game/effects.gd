@@ -3,14 +3,16 @@ extends Node
 @onready var _entity_manager: Node = $"../EntityManager"
 
 func _ready() -> void:
-	Network.cast_ok.connect(_on_cast_ok)
+	Network.action_ok.connect(_on_action_ok)
 
-func _on_cast_ok(actor_id: int, _effect: int, target_id: int, spell_type: int) -> void:
+func _on_action_ok(actor_id: int, _effect: int, target_id: int, action_type: int) -> void:
+	if action_type == Protocol.ACTION_ATTACK:
+		return  # swing handled by equipment.gd
 	var actor  := _entity_manager.entities.get(actor_id)  as StaticBody3D
 	var target := _entity_manager.entities.get(target_id) as StaticBody3D
 	if actor == null or target == null:
 		return
-	if spell_type == 1: # SpellType::Projectile
+	if _effect == Protocol.EFFECT_PROJECTILE:
 		_projectile(actor.position + Vector3(0, 0.7, 0), target)
 	else:
 		_lightning(actor.position + Vector3(0, 1, 0), target.position + Vector3(0, 1, 0))

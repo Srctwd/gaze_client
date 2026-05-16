@@ -25,11 +25,13 @@ func _ready() -> void:
 
 	_username_field = LineEdit.new()
 	_username_field.placeholder_text = "Email"
+	_username_field.text = "srctwd@gmail.com"
 	vbox.add_child(_username_field)
 
 	_password_field = LineEdit.new()
 	_password_field.placeholder_text = "Passkey"
 	_password_field.secret = true
+	_password_field.text = "777"
 	vbox.add_child(_password_field)
 
 	var btn := Button.new()

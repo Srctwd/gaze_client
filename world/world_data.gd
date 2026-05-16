@@ -1,15 +1,22 @@
 class_name WorldData
 extends RefCounted
 
-var chunk_cells     : int
-var chunks_x        : int
-var chunks_z        : int
-var cell_size       : float
-var _chunks         : Array = []
+const MAGIC := 0x47574C44  # "GWLD"
+
+var chunk_cells : int
+var chunks_x    : int
+var chunks_z    : int
+var cell_size   : float
+var origin_cx   : int = 0
+var origin_cz   : int = 0
+var world_ox    : float = 0.0
+var world_oz    : float = 0.0
+var _chunks     : Array = []
 var _static_objects : Array = []
-var _material     : Material
-var _mat_cave     : Material
-var _grass_meshes : Array = []
+var _material      : Material
+var _mat_cave      : ShaderMaterial
+var _mat_cave_floor: ShaderMaterial
+var _grass_meshes  : Array = []
 var _tree_scene   : PackedScene = null
 var _rock_scene   : PackedScene = null
 
@@ -24,11 +31,28 @@ func load(path: String) -> bool:
 		push_error("WorldData: cannot open " + path)
 		return false
 
-	chunk_cells        = f.get_32()
-	chunks_x           = f.get_32()
-	chunks_z           = f.get_32()
-	cell_size          = f.get_float()
-	var static_offset  := f.get_32()
+	var first := f.get_32()
+	var static_offset: int
+	if first == MAGIC:
+		chunk_cells   = f.get_32()
+		chunks_x      = f.get_32()
+		chunks_z      = f.get_32()
+		cell_size     = f.get_float()
+		var raw_ocx   := f.get_32()
+		var raw_ocz   := f.get_32()
+		static_offset = f.get_32()
+		origin_cx = raw_ocx if raw_ocx < 0x80000000 else int(raw_ocx) - 0x100000000
+		origin_cz = raw_ocz if raw_ocz < 0x80000000 else int(raw_ocz) - 0x100000000
+	else:
+		chunk_cells   = first
+		chunks_x      = f.get_32()
+		chunks_z      = f.get_32()
+		cell_size     = f.get_float()
+		static_offset = f.get_32()
+		origin_cx = -(chunks_x / 2)
+		origin_cz = -(chunks_z / 2)
+	world_ox = origin_cx * chunk_cells * cell_size
+	world_oz = origin_cz * chunk_cells * cell_size
 
 	var total  := chunks_x * chunks_z
 	var stride := chunk_cells + 1
@@ -82,8 +106,9 @@ func load(path: String) -> bool:
 	f.close()
 
 	var holes := _find_holes()
-	_material  = _make_surface_mat(Color(0.35, 0.52, 0.28), holes)
-	_mat_cave  = _make_standard_mat(Color(0.25, 0.22, 0.20))
+	_material      = _make_surface_mat(Color(0.35, 0.52, 0.28), holes)
+	_mat_cave       = _make_cave_mat(Color(0.40, 0.33, 0.25))   # ceiling — mid brown
+	_mat_cave_floor = _make_cave_mat(Color(0.30, 0.20, 0.13))  # floor — darker brown
 	var m := _merge_glb_mesh("res://assets/stylized_grass_bush.glb")
 	if m:
 		_grass_meshes.append(m)
@@ -96,8 +121,8 @@ func load(path: String) -> bool:
 
 
 func spawn_into(parent: Node3D) -> void:
-	var ox := -(chunks_x * chunk_cells * cell_size * 0.5)
-	var oz := -(chunks_z * chunk_cells * cell_size * 0.5)
+	var ox := world_ox
+	var oz := world_oz
 
 	for i in range(_chunks.size()):
 		var cx := i % chunks_x
@@ -121,8 +146,6 @@ func spawn_into(parent: Node3D) -> void:
 
 
 func _get_height_at(wx: float, wz: float) -> float:
-	var world_ox := -(chunks_x * chunk_cells * cell_size * 0.5)
-	var world_oz := -(chunks_z * chunk_cells * cell_size * 0.5)
 	var lx := wx - world_ox
 	var lz := wz - world_oz
 	var cx := int(lx / (chunk_cells * cell_size))
@@ -152,7 +175,7 @@ func _get_height_at(wx: float, wz: float) -> float:
 		return h11 + (h01 - h11) * (1.0 - rx) + (h10 - h11) * (1.0 - rz)
 
 
-func _make_chunk(h1: Array, origin: Vector3, mat: Material) -> MeshInstance3D:
+func _make_chunk(h1: Array, origin: Vector3, mat: Material, flip_normals: bool = false) -> MeshInstance3D:
 	var st     := SurfaceTool.new()
 	var stride := chunk_cells + 1
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -175,20 +198,25 @@ func _make_chunk(h1: Array, origin: Vector3, mat: Material) -> MeshInstance3D:
 			st.set_uv(u1); st.add_vertex(v1)
 			st.set_uv(u3); st.add_vertex(v3)
 			st.set_uv(u2); st.add_vertex(v2)
-	st.generate_normals()
+	st.generate_normals(flip_normals)
 	st.index()
 	var mesh := st.commit()
-	mesh.surface_set_material(0, mat)
+	if mesh.get_surface_count() > 0:
+		mesh.surface_set_material(0, mat)
 	var mi      := MeshInstance3D.new()
 	mi.mesh     = mesh
 	mi.position = origin
+	# Force a padded AABB so Forward+ doesn't cull flat or near-flat underground meshes
+	var aabb := mesh.get_aabb()
+	if aabb.size.y < 2.0:
+		mi.custom_aabb = AABB(aabb.position + Vector3(0, -1, 0), aabb.size + Vector3(0, 2, 0))
 	return mi
 
 
 func _find_holes() -> Array:
 	var holes  := []
-	var ox     := -(chunks_x * chunk_cells * cell_size * 0.5)
-	var oz     := -(chunks_z * chunk_cells * cell_size * 0.5)
+	var ox     := world_ox
+	var oz     := world_oz
 	var stride := chunk_cells + 1
 
 	for i in range(_chunks.size()):
@@ -219,11 +247,32 @@ func _find_holes() -> Array:
 	return holes
 
 
-func _make_standard_mat(color: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.cull_mode    = BaseMaterial3D.CULL_DISABLED
+func _make_cave_mat(tint: Color) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode cull_disabled;
+uniform sampler2D cave_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+uniform float tile_scale = 4.0;
+varying vec3 world_pos;
+void vertex() {
+	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
+	vec3 tex = texture(cave_tex, world_pos.xz / tile_scale).rgb;
+	ALBEDO = tex * tint.rgb;
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("cave_tex", load("res://assets/cave_texture.jpg"))
+	m.set_shader_parameter("tint", tint)
 	return m
+
+func _make_standard_mat(color: Color) -> ShaderMaterial:
+	return _make_cave_mat(color)
 
 
 func _make_surface_mat(color: Color, holes: Array) -> Material:

@@ -7,9 +7,12 @@ signal unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: 
 signal time_of_day(game_seconds: float)
 signal login_ok(net_id: int)
 signal login_fail
-signal cast_ok(actor_id: int, effect: int, target_id: int, spell_type: int)
+signal action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
 signal unit_destroyed(net_id: int)
 signal vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana: float)
+signal floor_item_spawned(net_id: int, def_id: int, pos: Vector3)
+signal floor_item_destroyed(net_id: int)
+signal equip_synced(net_id: int, slot: int, item_def_id: int)
 
 const HOST     = "127.0.0.1"
 const PORT     = 7777
@@ -64,14 +67,29 @@ func _parse(data: PackedByteArray) -> void:
 				login_ok.emit(data.decode_u32(2))
 			else:
 				login_fail.emit()
-		0x09: # CastOk: actor(u32) effect(u8) target(u32) spell_type(u8)
-			cast_ok.emit(data.decode_u32(1), data[5], data.decode_u32(6), data[10])
+		0x09: # ActionOk: actor(u32) effect(u8) action_type(u8) count(u8) [target(u32)×count]
+			var _actor := data.decode_u32(1)
+			var _effect := data[5]
+			var _atype := data[6]
+			var _count := data[7]
+			if _count == 0:
+				action_ok.emit(_actor, _effect, 0, _atype)
+			else:
+				for i in _count:
+					action_ok.emit(_actor, _effect, data.decode_u32(8 + i * 4), _atype)
 		0x0B: # DestroyUnit: net_id(u32)
 			unit_destroyed.emit(data.decode_u32(1))
 		0x0C: # VitalUpdate: net_id(u32) hp max_hp mana max_mana (f32×4)
 			vital_update.emit(data.decode_u32(1),
 				data.decode_float(5), data.decode_float(9),
 				data.decode_float(13), data.decode_float(17))
+		0x0D: # SpawnFloorItem: net_id(u32) def_id(u8) x y z (f32×3)
+			floor_item_spawned.emit(data.decode_u32(1), data[5],
+				Vector3(data.decode_float(6), data.decode_float(10), data.decode_float(14)))
+		0x0E: # DestroyFloorItem: net_id(u32)
+			floor_item_destroyed.emit(data.decode_u32(1))
+		0x10: # EquipSync: net_id(u32) slot(u8) item_def_id(u8)
+			equip_synced.emit(data.decode_u32(1), data[5], data[6])
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

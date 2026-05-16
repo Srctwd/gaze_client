@@ -13,10 +13,19 @@ var _token:        String = ""
 var _player_net_id: int = -1
 var character_ui:  CanvasLayer
 var _black_bg:     CanvasLayer
+var equipment:     Node
 
 func _ready() -> void:
 	character_ui = preload("res://ui/character_ui.gd").new()
 	add_child(character_ui)
+
+	add_child(preload("res://game/damage_numbers.gd").new())
+
+	var floor_items := preload("res://game/floor_items.gd").new()
+	add_child(floor_items)
+	equipment = preload("res://game/equipment.gd").new()
+	add_child(equipment)
+	player_controller.set("floor_items", floor_items)
 
 	_black_bg = CanvasLayer.new()
 	_black_bg.layer = -1
@@ -102,8 +111,12 @@ func _on_unit_destroyed(net_id: int) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_set_player_id(-1)
 	camera.hide_hud()
+	var rect := _black_bg.get_child(0) as ColorRect
+	rect.modulate.a = 0.0
 	_black_bg.visible = true
-	character_ui.show_for_token(_token)
+	var tween := create_tween()
+	tween.tween_property(rect, "modulate:a", 1.0, 1.5).set_ease(Tween.EASE_IN)
+	tween.tween_callback(func(): character_ui.show_for_token(_token))
 
 func _on_login_fail() -> void:
 	login_ui.visible = true
@@ -113,3 +126,4 @@ func _set_player_id(net_id: int) -> void:
 	entity_manager.player_net_id    = net_id
 	player_controller.player_net_id = net_id
 	targeting.player_net_id         = net_id
+	equipment.player_net_id         = net_id
