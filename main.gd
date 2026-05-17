@@ -7,6 +7,7 @@ const WEBSERVER := "http://localhost:8000"
 @onready var player_controller: Node             = $PlayerController
 @onready var targeting:         Node             = $Targeting
 @onready var login_ui: CanvasLayer = $LoginUI
+@onready var _terrain: Node3D      = $Terrain
 
 var _http:         HTTPRequest
 var _token:        String = ""
@@ -19,7 +20,7 @@ func _ready() -> void:
 	character_ui = preload("res://ui/character_ui.gd").new()
 	add_child(character_ui)
 
-	add_child(preload("res://game/damage_numbers.gd").new())
+	add_child(preload("res://game/effects.gd").new())
 
 	var floor_items := preload("res://game/floor_items.gd").new()
 	add_child(floor_items)
@@ -51,6 +52,7 @@ func _ready() -> void:
 	character_ui.character_confirmed.connect(_on_character_confirmed)
 	camera.first_person_changed.connect(entity_manager.set_first_person)
 	entity_manager.player_moved.connect(camera.follow)
+	entity_manager.player_moved.connect(_on_player_moved)
 
 
 func _on_login_pressed(email: String, passkey: String) -> void:
@@ -121,6 +123,9 @@ func _on_unit_destroyed(net_id: int) -> void:
 func _on_login_fail() -> void:
 	login_ui.visible = true
 	login_ui.show_error("Invalid credentials")
+
+func _on_player_moved(_pos: Vector3) -> void:
+	camera.set_underwater(_terrain.is_in_water(camera.global_position))
 
 func _set_player_id(net_id: int) -> void:
 	entity_manager.player_net_id    = net_id

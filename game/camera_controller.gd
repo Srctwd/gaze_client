@@ -41,6 +41,9 @@ func set_health(ratio: float, max_val: float = 100.0) -> void:
 func set_mana(ratio: float, max_val: float = 100.0) -> void:
 	_hud.set_mana(ratio, max_val)
 
+func set_underwater(val: bool) -> void:
+	_hud.set_underwater(val)
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion \
 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \

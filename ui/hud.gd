@@ -2,9 +2,17 @@ extends CanvasLayer
 
 var _hp_bar:   ProgressBar
 var _mana_bar: ProgressBar
+var _underwater: ColorRect
 
 
 func _ready() -> void:
+	_underwater = ColorRect.new()
+	_underwater.color = Color(0.04, 0.18, 0.48, 0.22)
+	_underwater.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_underwater.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_underwater.visible = false
+	add_child(_underwater)
+
 	var vbox := VBoxContainer.new()
 	vbox.position = Vector2(16, 16)
 	vbox.custom_minimum_size = Vector2(200, 0)
@@ -28,6 +36,9 @@ func show_bars() -> void:
 
 func hide_bars() -> void:
 	_hp_bar.get_parent().visible = false
+
+func set_underwater(val: bool) -> void:
+	_underwater.visible = val
 
 func set_health(ratio: float, max_val: float = _BASE_HEALTH) -> void:
 	_hp_bar.value = clampf(ratio, 0.0, 1.0) * 100.0

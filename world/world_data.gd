@@ -13,6 +13,7 @@ var world_ox    : float = 0.0
 var world_oz    : float = 0.0
 var _chunks     : Array = []
 var _static_objects : Array = []
+var _water_rects    : Array = []
 var _material      : Material
 var _mat_cave      : ShaderMaterial
 var _mat_cave_floor: ShaderMaterial
@@ -103,6 +104,15 @@ func load(path: String) -> bool:
 		var height := f.get_float()
 		_static_objects.append({ "type": type, "x": ox_, "z": oz_, "radius": radius, "height": height })
 
+	_water_rects.clear()
+	if not f.eof_reached():
+		var wcount := f.get_32()
+		for _i in range(wcount):
+			_water_rects.append({
+				"x": f.get_float(), "z": f.get_float(),
+				"width": f.get_float(), "depth": f.get_float(), "y": f.get_float()
+			})
+
 	f.close()
 
 	var holes := _find_holes()
@@ -144,6 +154,39 @@ func spawn_into(parent: Node3D) -> void:
 			node.position = Vector3(obj.x, wy, obj.z)
 			parent.add_child(node)
 
+	var water_mat := _make_water_mat()
+	for wr in _water_rects:
+		var plane := PlaneMesh.new()
+		plane.size = Vector2(wr.width as float, wr.depth as float)
+		plane.surface_set_material(0, water_mat)
+		var mi := MeshInstance3D.new()
+		mi.mesh     = plane
+		mi.position = Vector3(wr.x as float, wr.y as float, wr.z as float)
+		parent.add_child(mi)
+
+
+func _make_water_mat() -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_disabled;
+uniform vec4  water_color : source_color = vec4(0.08, 0.38, 0.65, 0.6);
+uniform float wave_speed  = 0.25;
+uniform float wave_scale  = 5.0;
+void fragment() {
+	vec2 uv   = UV * wave_scale;
+	float w   = sin(uv.x + TIME * wave_speed) * cos(uv.y + TIME * wave_speed * 0.7) * 0.04;
+	ALBEDO    = water_color.rgb;
+	ALPHA     = clamp(water_color.a + w, 0.3, 0.85);
+	ROUGHNESS = 0.05;
+	METALLIC  = 0.2;
+	SPECULAR  = 1.0;
+	NORMAL    = vec3(sin(uv.x + TIME * wave_speed) * 0.08, 1.0, cos(uv.y + TIME * wave_speed * 0.7) * 0.08);
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	return m
 
 func _get_height_at(wx: float, wz: float) -> float:
 	var lx := wx - world_ox
