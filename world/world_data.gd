@@ -14,16 +14,15 @@ var world_oz    : float = 0.0
 var _chunks     : Array = []
 var _static_objects : Array = []
 var _water_rects    : Array = []
+var _biomes         : Array = []  # [{id, name, material, props[]}]
+var _prop_types     : Array = []
+var _prop_instances : Array = []
+var _holes          : Array = []
 var _material      : Material
 var _mat_cave      : ShaderMaterial
 var _mat_cave_floor: ShaderMaterial
-var _grass_meshes  : Array = []
-var _tree_scene   : PackedScene = null
-var _rock_scene   : PackedScene = null
-
-# Each entry: { scene, density, upright, scale_min, scale_max, seed_offset }
-# upright=true: Y stays world-up (characters, props). upright=false: aligns to slope (plants).
-var _veg_specs : Array = []
+var _tree_scene    : PackedScene = null
+var _rock_scene    : PackedScene = null
 
 
 func load(path: String) -> bool:
@@ -59,11 +58,15 @@ func load(path: String) -> bool:
 	var stride := chunk_cells + 1
 	var cells  := stride * stride
 
+	var has_biome := (first == MAGIC)
+
 	var types   : Array[int] = []
+	var biomes_ : Array[int] = []
 	var offsets : Array[int] = []
 
 	for i in range(total):
 		types.append(f.get_8())
+		biomes_.append(f.get_8() if has_biome else 0)
 		offsets.append(f.get_32())
 
 	_chunks.clear()
@@ -91,7 +94,7 @@ func load(path: String) -> bool:
 			for j in range(cells):
 				h3[j] = f.get_float()
 
-		_chunks.append({ "type": types[i], "h1": h1, "h2": h2, "h3": h3 })
+		_chunks.append({ "type": types[i], "biome": biomes_[i], "h1": h1, "h2": h2, "h3": h3 })
 
 	_static_objects.clear()
 	f.seek(static_offset)
@@ -113,35 +116,66 @@ func load(path: String) -> bool:
 				"width": f.get_float(), "depth": f.get_float(), "y": f.get_float()
 			})
 
+	_biomes.clear()
+	if not f.eof_reached():
+		var bcount := f.get_8()
+		for _bi in range(bcount):
+			var bid   := f.get_8()
+			var n     := f.get_8(); var bname := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
+			n = f.get_8(); var bmat  := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
+			var pc    := f.get_8()
+			var bprops: Array[String] = []
+			for _pi in range(pc):
+				n = f.get_8(); bprops.append(f.get_buffer(n).get_string_from_utf8() if n > 0 else "")
+			_biomes.append({ "id": bid, "name": bname, "material": bmat, "props": bprops })
+
+	_prop_types.clear()
+	_prop_instances.clear()
+	if not f.eof_reached():
+		var ptcount := f.get_8()
+		for _pti in range(ptcount):
+			var pn := f.get_8(); _prop_types.append(f.get_buffer(pn).get_string_from_utf8() if pn > 0 else "")
+	if not f.eof_reached():
+		var picount := f.get_32()
+		for _pii in range(picount):
+			_prop_instances.append({
+				"type_idx": f.get_8(),
+				"x": f.get_float(), "y": f.get_float(), "z": f.get_float(),
+				"rot_y": f.get_float(),
+				"sx": f.get_float(), "sy": f.get_float(), "sz": f.get_float()
+			})
+
 	f.close()
 
-	var holes := _find_holes()
-	_material      = _make_surface_mat(Color(0.35, 0.52, 0.28), holes)
-	_mat_cave       = _make_cave_mat(Color(0.40, 0.33, 0.25))   # ceiling — mid brown
-	_mat_cave_floor = _make_cave_mat(Color(0.30, 0.20, 0.13))  # floor — darker brown
-	var m := _merge_glb_mesh("res://assets/stylized_grass_bush.glb")
-	if m:
-		_grass_meshes.append(m)
-	_tree_scene = load("res://assets/tree01.glb")
-	_rock_scene = load("res://assets/rock01.glb")
-	_veg_specs = [
-		{ "scene": load("res://assets/fern01.glb"), "density": 0.12, "upright": false, "scale_min": 3.0, "scale_max": 6.0, "seed_offset": 1.0 },
-	]
+	_holes = _find_holes()
+	_material      = _make_surface_mat(Color(0.35, 0.52, 0.28), _holes)
+	_mat_cave       = _make_cave_mat(Color(0.40, 0.33, 0.25))
+	_mat_cave_floor = _make_cave_mat(Color(0.30, 0.20, 0.13))
+	_tree_scene    = load("res://assets/tree01.glb")
+	_rock_scene    = load("res://assets/rock01.glb")
 	return true
 
 
 func spawn_into(parent: Node3D) -> void:
 	var ox := world_ox
 	var oz := world_oz
+	var biome_mat_cache: Dictionary = {}
 
 	for i in range(_chunks.size()):
 		var cx := i % chunks_x
 		var cz := int(i / chunks_x)
-		var origin := Vector3(ox + cx * chunk_cells * cell_size, 0.0, oz + cz * chunk_cells * cell_size)
-		parent.add_child(_make_chunk(_chunks[i].h1, origin, _material))
-		parent.add_child(_make_grass_chunk(_chunks[i].h1, origin))
-		for spec in _veg_specs:
-			parent.add_child(_make_veg_chunk(_chunks[i].h1, origin, spec))
+		var origin   := Vector3(ox + cx * chunk_cells * cell_size, 0.0, oz + cz * chunk_cells * cell_size)
+		var biome_id := _chunks[i].get("biome", 0) as int
+
+		var chunk_mat: Material
+		if _biomes.is_empty():
+			chunk_mat = _material
+		else:
+			if not biome_mat_cache.has(biome_id):
+				biome_mat_cache[biome_id] = _get_biome_surface_mat(biome_id, _holes)
+			chunk_mat = biome_mat_cache[biome_id] as Material
+
+		parent.add_child(_make_chunk(_chunks[i].h1, origin, chunk_mat))
 		if _chunks[i].type == 2:
 			parent.add_child(_make_chunk(_chunks[i].h2, origin, _mat_cave))
 			parent.add_child(_make_chunk(_chunks[i].h3, origin, _mat_cave))
@@ -164,12 +198,29 @@ func spawn_into(parent: Node3D) -> void:
 		mi.position = Vector3(wr.x as float, wr.y as float, wr.z as float)
 		parent.add_child(mi)
 
+	var prop_cache: Dictionary = {}
+	for pi_ in _prop_instances:
+		var pd    := pi_ as Dictionary
+		var tidx  := pd["type_idx"] as int
+		if tidx < 0 or tidx >= _prop_types.size(): continue
+		var path  := _prop_types[tidx] as String
+		if not prop_cache.has(path):
+			prop_cache[path] = load(path) as PackedScene
+		var sc := prop_cache[path] as PackedScene
+		if sc == null: continue
+		var inst := sc.instantiate() as Node3D
+		inst.position   = Vector3(pd["x"] as float, pd["y"] as float, pd["z"] as float)
+		inst.rotation.y = pd["rot_y"] as float
+		inst.scale      = Vector3(pd["sx"] as float, pd["sy"] as float, pd["sz"] as float)
+		parent.add_child(inst)
+
+
 
 func _make_water_mat() -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled;
+render_mode blend_mix, depth_draw_opaque;
 uniform vec4  water_color : source_color = vec4(0.08, 0.38, 0.65, 0.6);
 uniform float wave_speed  = 0.25;
 uniform float wave_scale  = 5.0;
@@ -186,6 +237,7 @@ void fragment() {
 """
 	var m := ShaderMaterial.new()
 	m.shader = sh
+	m.render_priority = 1
 	return m
 
 func _get_height_at(wx: float, wz: float) -> float:
@@ -314,9 +366,6 @@ void fragment() {
 	m.set_shader_parameter("tint", tint)
 	return m
 
-func _make_standard_mat(color: Color) -> ShaderMaterial:
-	return _make_cave_mat(color)
-
 
 func _make_surface_mat(color: Color, holes: Array) -> Material:
 	var sh  := Shader.new()
@@ -365,140 +414,21 @@ void fragment() {
 	return mat
 
 
-func _merge_glb_mesh(path: String) -> ArrayMesh:
-	var scene := load(path) as PackedScene
-	if not scene:
-		return null
-	var root   := scene.instantiate()
-	var result := ArrayMesh.new()
-	for node in root.find_children("*", "MeshInstance3D", true, false):
-		var mi := node as MeshInstance3D
-		for s in mi.mesh.get_surface_count():
-			var st := SurfaceTool.new()
-			st.begin(Mesh.PRIMITIVE_TRIANGLES)
-			st.append_from(mi.mesh, s, mi.transform)
-			var tmp := st.commit()
-			result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, tmp.surface_get_arrays(0))
-			result.surface_set_material(result.get_surface_count() - 1, mi.mesh.surface_get_material(s))
-	root.free()
-	return result
 
+func _get_biome_surface_mat(biome_id: int, holes: Array) -> Material:
+	var mat_name := "grassland"
+	for _bdef in _biomes:
+		if (_bdef as Dictionary)["id"] == biome_id:
+			mat_name = (_bdef as Dictionary).get("material", "grassland") as String
+			break
+	var color := Color(0.35, 0.52, 0.28)
+	match mat_name:
+		"grassland":    color = Color(0.35, 0.52, 0.28)
+		"forest":       color = Color(0.18, 0.38, 0.16)
+		"elven_floor":  color = Color(0.25, 0.48, 0.32)
+		"slime_ground": color = Color(0.28, 0.50, 0.18)
+		"desert_sand":  color = Color(0.78, 0.68, 0.45)
+		"snow":         color = Color(0.88, 0.90, 0.93)
+		"swamp_mud":    color = Color(0.28, 0.32, 0.18)
+	return _make_surface_mat(color, holes)
 
-func _make_grass_chunk(h1: Array, origin: Vector3) -> Node3D:
-	var container := Node3D.new()
-	container.position = origin
-
-	if _grass_meshes.is_empty():
-		return container
-
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(str(origin.x) + str(origin.z))
-
-	var xforms : Array = []
-	for _i in _grass_meshes.size():
-		xforms.append([])
-
-	var stride := chunk_cells + 1
-	for gz in range(chunk_cells):
-		for gx in range(chunk_cells):
-			var tl := gz * stride + gx
-			if is_nan(h1[tl]) or is_nan(h1[tl+1]) or is_nan(h1[tl+stride]) or is_nan(h1[tl+stride+1]):
-				continue
-			if rng.randf() > 0.25:
-				continue
-			for _b in range(4):
-				var rx  := rng.randf()
-				var rz  := rng.randf()
-				var fx  := (gx + rx) * cell_size
-				var fz  := (gz + rz) * cell_size
-				var hy  := _sample_height(h1, tl, rx, rz)
-				var n   := _sample_normal(h1, tl, rx, rz)
-				var rot := rng.randf() * TAU
-				var sc  := rng.randf_range(0.0005, 0.0010)
-				var fwd := Vector3(cos(rot), 0.0, sin(rot)).slide(n).normalized()
-				var t   := Transform3D(Basis(fwd.cross(n).normalized(), n, -fwd).scaled(Vector3.ONE * sc), Vector3(fx, hy, fz))
-				(xforms[rng.randi() % _grass_meshes.size()] as Array).append(t)
-
-	for i in _grass_meshes.size():
-		var arr := xforms[i] as Array
-		if arr.is_empty():
-			continue
-		var mm := MultiMesh.new()
-		mm.mesh             = _grass_meshes[i]
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.instance_count   = arr.size()
-		for j in arr.size():
-			mm.set_instance_transform(j, arr[j])
-		var mmi       := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		container.add_child(mmi)
-
-	return container
-
-
-func _sample_height(h1: Array, tl: int, rx: float, rz: float) -> float:
-	var stride := chunk_cells + 1
-	var h00 := h1[tl]               as float
-	var h10 := h1[tl + 1]           as float
-	var h01 := h1[tl + stride]      as float
-	var h11 := h1[tl + stride + 1]  as float
-	if rx + rz <= 1.0:
-		return h00 + (h10 - h00) * rx + (h01 - h00) * rz
-	else:
-		return h11 + (h01 - h11) * (1.0 - rx) + (h10 - h11) * (1.0 - rz)
-
-func _sample_normal(h1: Array, tl: int, rx: float, rz: float) -> Vector3:
-	var stride := chunk_cells + 1
-	var h00 := h1[tl]          as float
-	var h10 := h1[tl + 1]      as float
-	var h01 := h1[tl + stride] as float
-	if rx + rz <= 1.0:
-		return Vector3(0.0, h01 - h00, cell_size).cross(Vector3(cell_size, h10 - h00, 0.0)).normalized()
-	else:
-		var h11 := h1[tl + stride + 1] as float
-		return Vector3(-cell_size, h01 - h10, cell_size).cross(Vector3(0.0, h11 - h10, cell_size)).normalized()
-
-func _make_veg_chunk(h1: Array, origin: Vector3, spec: Dictionary) -> Node3D:
-	var container := Node3D.new()
-	container.position = origin
-
-	var scene: PackedScene = spec["scene"]
-	if scene == null:
-		return container
-
-	var density:    float = spec["density"]
-	var upright:    bool  = spec["upright"]
-	var scale_min:  float = spec["scale_min"]
-	var scale_max:  float = spec["scale_max"]
-	var seed_off:   float = spec["seed_offset"]
-
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(str(origin.x + seed_off) + str(origin.z + seed_off))
-
-	var stride := chunk_cells + 1
-	for gz in range(chunk_cells):
-		for gx in range(chunk_cells):
-			if rng.randf() > density:
-				continue
-			var tl := gz * stride + gx
-			if is_nan(h1[tl]) or is_nan(h1[tl+1]) or is_nan(h1[tl+stride]) or is_nan(h1[tl+stride+1]):
-				continue
-			var rx  := rng.randf()
-			var rz  := rng.randf()
-			var fx  := (gx + rx) * cell_size
-			var fz  := (gz + rz) * cell_size
-			var hy  := _sample_height(h1, tl, rx, rz)
-			var rot := rng.randf() * TAU
-			var sc  := rng.randf_range(scale_min, scale_max)
-			var inst := scene.instantiate() as Node3D
-			if upright:
-				inst.position   = Vector3(fx, hy, fz)
-				inst.rotation.y = rot
-			else:
-				var normal := _sample_normal(h1, tl, rx, rz)
-				var fwd    := Vector3(cos(rot), 0.0, sin(rot)).slide(normal).normalized()
-				var right  := fwd.cross(normal).normalized()
-				inst.transform = Transform3D(Basis(right, normal, -fwd).scaled(Vector3.ONE * sc), Vector3(fx, hy, fz))
-			container.add_child(inst)
-
-	return container

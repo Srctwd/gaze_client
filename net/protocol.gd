@@ -76,14 +76,6 @@ static func pkt_cast(slot: int) -> PackedByteArray:
 	pkt[1] = slot
 	return pkt
 
-# ── Variant helpers ────────────────────────────────────────────────────────
-static func unpack_variant(v: int) -> Dictionary:
-	return {
-		"headgear":    (v >> 6) & 0x3,
-		"breastplate": (v >> 4) & 0x3,
-		"boots":       (v >> 2) & 0x3,
-		"leggings":     v       & 0x3,
-	}
 
 static func pkt_pickup(net_id: int) -> PackedByteArray:
 	var pkt := PackedByteArray()

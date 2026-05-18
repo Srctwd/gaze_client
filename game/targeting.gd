@@ -51,7 +51,6 @@ func _select_target() -> void:
 			second_score = score
 			second_id    = net_id
 
-	print("[target] best_id=", best_id, " second_id=", second_id, " current=", _current_target)
 	if best_id == -1:
 		return
 
@@ -65,7 +64,6 @@ func _select_target() -> void:
 	_set_highlight(chosen, true)
 	_current_target = chosen
 
-	print("[target] sending net_id=", chosen, " connected=", Network.is_connected_to_server())
 	Network.send(Protocol.pkt_target(chosen))
 
 func pick_aimed_item(items: Dictionary) -> int:
