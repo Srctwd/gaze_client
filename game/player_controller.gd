@@ -3,14 +3,13 @@ extends Node
 @onready var _camera:    CameraController = $"../Camera3D"
 @onready var _targeting                  = $"../Targeting"
 
-var player_net_id: int  = -1
 var floor_items:   Node = null
 var _last_intent   := Vector2.ZERO
 var _last_yaw      := 0.0
 const _YAW_THRESHOLD := 0.1  # ~6 degrees
 
 func _process(_delta: float) -> void:
-	if player_net_id == -1:
+	if GameState.player_net_id == -1:
 		return
 	var intent := _get_intent()
 	var yaw    := _camera.yaw
@@ -31,7 +30,7 @@ func _get_intent() -> Vector2:
 	return dir
 
 func _input(event: InputEvent) -> void:
-	if player_net_id == -1:
+	if GameState.player_net_id == -1:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		Network.send(Protocol.pkt_action(Protocol.ACTION_REQ_PUNCH))

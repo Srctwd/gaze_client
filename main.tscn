@@ -51,6 +51,7 @@ script = ExtResource("TerrainScript")
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=909115655]
 
 [node name="Moon" type="MeshInstance3D" parent="." unique_id=450768437]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.005497694, 0.017451167, -0.006694317)
 mesh = SubResource("SphereMesh_h2yge")
 surface_material_override/0 = SubResource("StandardMaterial3D_h2yge")
 

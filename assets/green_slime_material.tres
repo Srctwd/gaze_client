@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://b8no646w37rcp"]
+
+[resource]
+resource_name = "green_slime_material"
+transparency = 1
+albedo_color = Color(0, 1, 0, 0.74509805)
+metallic = 0.15
+roughness = 0.5

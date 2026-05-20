@@ -18,6 +18,8 @@ config/run/main_scene="res://main.tscn"
 
 [autoload]
 
+Config="*res://config.gd"
+GameState="*res://game_state.gd"
 Network="*res://net/network.gd"
 Protocol="*res://net/protocol.gd"
 

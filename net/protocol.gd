@@ -17,6 +17,8 @@ const SPAWN_FLOOR_ITEM   := 0x0D
 const DESTROY_FLOOR_ITEM := 0x0E
 const PICKUP_REQUEST     := 0x0F
 const EQUIP_SYNC         := 0x10
+const XP_GAIN            := 0x11
+const LEVEL_UP           := 0x12
 
 # ── Item defs ──────────────────────────────────────────────────────────────
 const ITEM_STICK := 1
@@ -26,6 +28,7 @@ const UNIT_PLAYER    := 0x01
 const UNIT_MINOTAUR  := 0x02
 const UNIT_MINO_MAGE := 0x03
 const UNIT_SLIME     := 0x04
+const UNIT_SNAKE     := 0x05
 
 # ── Action types (ActionType enum) ────────────────────────────────────────
 const ACTION_NOTHING := 0

@@ -17,22 +17,21 @@ const _FP_ROT := Vector3(80, 1, 90)
 
 var _fp_weapon: Node3D
 var _swinging: bool = false
-var player_net_id: int = -1
 
 func _ready() -> void:
 	_fp_weapon = Node3D.new()
-	_fp_weapon.position       = _FP_POS
+	_fp_weapon.position         = _FP_POS
 	_fp_weapon.rotation_degrees = _FP_ROT
-	_fp_weapon.visible        = _camera.first_person
+	_fp_weapon.visible          = GameState.first_person
 	_camera.add_child(_fp_weapon)
-	_camera.first_person_changed.connect(_on_first_person_changed)
+	GameState.first_person_changed.connect(_on_first_person_changed)
 	Network.equip_synced.connect(_on_equip_synced)
 	Network.action_ok.connect(_on_action_ok)
 
 func _on_action_ok(actor_id: int, _effect: int, _target_id: int, action_type: int) -> void:
 	if action_type != Protocol.ACTION_ATTACK:
 		return
-	if actor_id != player_net_id:
+	if actor_id != GameState.player_net_id:
 		return
 	if not _swinging and _fp_weapon.visible:
 		_swing()
@@ -54,7 +53,7 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int) -> void:
 		return
 	var scene: PackedScene = _ITEM_MESHES.get(item_def_id)
 
-	if net_id == player_net_id:
+	if net_id == GameState.player_net_id:
 		_set_hand_node(_fp_weapon, scene)
 	else:
 		var body := _entity_manager.entities.get(net_id) as StaticBody3D

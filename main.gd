@@ -1,7 +1,5 @@
 extends Node3D
 
-const WEBSERVER := "http://localhost:8000"
-
 @onready var camera:            CameraController = $Camera3D
 @onready var entity_manager:    Node             = $EntityManager
 @onready var player_controller: Node             = $PlayerController
@@ -9,10 +7,9 @@ const WEBSERVER := "http://localhost:8000"
 @onready var login_ui: CanvasLayer = $LoginUI
 @onready var _terrain: Node3D      = $Terrain
 
-var _http:         HTTPRequest
-var _token:        String = ""
-var _player_net_id: int = -1
-var character_ui:  CanvasLayer
+var _http:        HTTPRequest
+var _token:       String = ""
+var character_ui: CanvasLayer
 var _black_bg:     CanvasLayer
 var equipment:     Node
 
@@ -50,14 +47,13 @@ func _ready() -> void:
 
 	login_ui.login_pressed.connect(_on_login_pressed)
 	character_ui.character_confirmed.connect(_on_character_confirmed)
-	camera.first_person_changed.connect(entity_manager.set_first_person)
 	entity_manager.player_moved.connect(camera.follow)
 	entity_manager.player_moved.connect(_on_player_moved)
 
 
 func _on_login_pressed(email: String, passkey: String) -> void:
 	var body := JSON.stringify({"email": email, "passkey": passkey})
-	_http.request(WEBSERVER + "/api/login",
+	_http.request(Config.WEBSERVER + "/api/login",
 		["Content-Type: application/json"],
 		HTTPClient.METHOD_POST, body)
 
@@ -88,30 +84,28 @@ func _on_disconnected() -> void:
 	login_ui.visible = false
 	character_ui.visible = false
 	_black_bg.visible = false
-	_set_player_id(-1)
+	GameState.player_net_id = -1
 
 func _on_login_ok(net_id: int) -> void:
 	login_ui.clear_error()
-	_player_net_id = net_id
 	_black_bg.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	_set_player_id(net_id)
+	GameState.player_net_id = net_id
 	camera.show_hud()
 
 
 func _on_vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana: float) -> void:
-	if net_id != _player_net_id:
+	if net_id != GameState.player_net_id:
 		return
 	camera.set_health(hp / max_hp if max_hp > 0 else 0.0, max_hp)
 	camera.set_mana(mana / max_mana if max_mana > 0 else 0.0, max_mana)
 
 
 func _on_unit_destroyed(net_id: int) -> void:
-	if net_id != _player_net_id:
+	if net_id != GameState.player_net_id:
 		return
-	_player_net_id = -1
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	_set_player_id(-1)
+	GameState.player_net_id = -1
 	camera.hide_hud()
 	var rect := _black_bg.get_child(0) as ColorRect
 	rect.modulate.a = 0.0
@@ -127,8 +121,11 @@ func _on_login_fail() -> void:
 func _on_player_moved(_pos: Vector3) -> void:
 	camera.set_underwater(_terrain.is_in_water(camera.global_position))
 
-func _set_player_id(net_id: int) -> void:
-	entity_manager.player_net_id    = net_id
-	player_controller.player_net_id = net_id
-	targeting.player_net_id         = net_id
-	equipment.player_net_id         = net_id
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F12:
+			var mode := DisplayServer.window_get_mode()
+			if mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+			else:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)

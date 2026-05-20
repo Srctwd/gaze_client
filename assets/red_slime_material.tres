@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://yluchllrl5ua"]
+
+[resource]
+resource_name = "red_slime_material"
+transparency = 1
+albedo_color = Color(1, 0, 0, 0.74509805)
+metallic = 0.15
+roughness = 0.5

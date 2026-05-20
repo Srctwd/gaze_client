@@ -89,7 +89,7 @@ func _ready() -> void:
 
 func show_for_token(token: String) -> void:
 	_token = token
-	_http.request("http://localhost:8000/api/characters?token=" + token,
+	_http.request(Config.WEBSERVER + "/api/characters?token=" + token,
 		[], HTTPClient.METHOD_GET)
 
 
@@ -128,7 +128,7 @@ func _on_create_pressed() -> void:
 		_create_error.text = "Enter a name."
 		return
 	var body := JSON.stringify({"token": _token, "name": name_val, "race": _race_option.selected})
-	_http.request("http://localhost:8000/api/characters",
+	_http.request(Config.WEBSERVER + "/api/characters",
 		["Content-Type: application/json"],
 		HTTPClient.METHOD_POST, body)
 
@@ -141,7 +141,7 @@ func _on_http_response(_result: int, code: int, _headers: PackedStringArray, bod
 		visible = true
 		return
 	if code == 200 and json is Dictionary and json.get("ok"):
-		_http.request("http://localhost:8000/api/characters?token=" + _token,
+		_http.request(Config.WEBSERVER + "/api/characters?token=" + _token,
 			[], HTTPClient.METHOD_GET)
 		return
 	if code == 400 and json is Dictionary and json.get("detail") == "Name already taken":

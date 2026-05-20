@@ -1,8 +1,6 @@
 class_name CameraController
 extends Camera3D
 
-signal first_person_changed(enabled: bool)
-
 var target:       Vector3 = Vector3.ZERO
 var yaw:          float   = 0.0
 var pitch:        float   = -0.5
@@ -30,7 +28,7 @@ func _ready() -> void:
 	lamp.omni_attenuation = 2.0
 	add_child(lamp)
 
-	first_person_changed.emit(first_person)
+	GameState.first_person = first_person
 
 func show_hud() -> void: _hud.show_bars()
 func hide_hud() -> void: _hud.hide_bars()

@@ -1,7 +1,8 @@
 class_name WorldData
 extends RefCounted
 
-const MAGIC := 0x47574C44  # "GWLD"
+const MAGIC        := 0x47574C44  # "GWLD"
+const WorldShaders  = preload("res://world/world_shaders.gd")
 
 var chunk_cells : int
 var chunks_x    : int
@@ -127,7 +128,11 @@ func load(path: String) -> bool:
 			var bprops: Array[String] = []
 			for _pi in range(pc):
 				n = f.get_8(); bprops.append(f.get_buffer(n).get_string_from_utf8() if n > 0 else "")
-			_biomes.append({ "id": bid, "name": bname, "material": bmat, "props": bprops })
+			# spawner fields (not used on client — read to advance position)
+			var bst  := f.get_8(); var bsi := f.get_float()
+			var bsm  := f.get_8(); var bsp := f.get_float()
+			_biomes.append({ "id": bid, "name": bname, "material": bmat, "props": bprops,
+				"spawn_type": bst, "spawn_interval": bsi, "spawn_max": bsm, "spawn_prob": bsp })
 
 	_prop_types.clear()
 	_prop_instances.clear()
@@ -148,9 +153,9 @@ func load(path: String) -> bool:
 	f.close()
 
 	_holes = _find_holes()
-	_material      = _make_surface_mat(Color(0.35, 0.52, 0.28), _holes)
-	_mat_cave       = _make_cave_mat(Color(0.40, 0.33, 0.25))
-	_mat_cave_floor = _make_cave_mat(Color(0.30, 0.20, 0.13))
+	_material      = WorldShaders.surface_mat(Color(0.35, 0.52, 0.28), _holes)
+	_mat_cave       = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))
+	_mat_cave_floor = WorldShaders.cave_mat(Color(0.30, 0.20, 0.13))
 	_tree_scene    = load("res://assets/tree01.glb")
 	_rock_scene    = load("res://assets/rock01.glb")
 	return true
@@ -172,7 +177,7 @@ func spawn_into(parent: Node3D) -> void:
 			chunk_mat = _material
 		else:
 			if not biome_mat_cache.has(biome_id):
-				biome_mat_cache[biome_id] = _get_biome_surface_mat(biome_id, _holes)
+				biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _holes, _biomes)
 			chunk_mat = biome_mat_cache[biome_id] as Material
 
 		parent.add_child(_make_chunk(_chunks[i].h1, origin, chunk_mat))
@@ -184,11 +189,13 @@ func spawn_into(parent: Node3D) -> void:
 		var wy    := _get_height_at(obj.x, obj.z)
 		var scene := _tree_scene if obj.type == 0 else _rock_scene
 		if scene:
-			var node := scene.instantiate() as Node3D
+			var node  := scene.instantiate() as Node3D
+			var sc    := (obj.radius as float) / (2.0 if obj.type == 0 else 1.0)
 			node.position = Vector3(obj.x, wy, obj.z)
+			node.scale    = Vector3.ONE * sc
 			parent.add_child(node)
 
-	var water_mat := _make_water_mat()
+	var water_mat := WorldShaders.water_mat()
 	for wr in _water_rects:
 		var plane := PlaneMesh.new()
 		plane.size = Vector2(wr.width as float, wr.depth as float)
@@ -216,29 +223,6 @@ func spawn_into(parent: Node3D) -> void:
 
 
 
-func _make_water_mat() -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode blend_mix, depth_draw_opaque;
-uniform vec4  water_color : source_color = vec4(0.08, 0.38, 0.65, 0.6);
-uniform float wave_speed  = 0.25;
-uniform float wave_scale  = 5.0;
-void fragment() {
-	vec2 uv   = UV * wave_scale;
-	float w   = sin(uv.x + TIME * wave_speed) * cos(uv.y + TIME * wave_speed * 0.7) * 0.04;
-	ALBEDO    = water_color.rgb;
-	ALPHA     = clamp(water_color.a + w, 0.3, 0.85);
-	ROUGHNESS = 0.05;
-	METALLIC  = 0.2;
-	SPECULAR  = 1.0;
-	NORMAL    = vec3(sin(uv.x + TIME * wave_speed) * 0.08, 1.0, cos(uv.y + TIME * wave_speed * 0.7) * 0.08);
-}
-"""
-	var m := ShaderMaterial.new()
-	m.shader = sh
-	m.render_priority = 1
-	return m
 
 func _get_height_at(wx: float, wz: float) -> float:
 	var lx := wx - world_ox
@@ -342,93 +326,4 @@ func _find_holes() -> Array:
 	return holes
 
 
-func _make_cave_mat(tint: Color) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode cull_disabled;
-uniform sampler2D cave_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
-uniform float tile_scale = 4.0;
-varying vec3 world_pos;
-void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-void fragment() {
-	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
-	vec3 tex = texture(cave_tex, world_pos.xz / tile_scale).rgb;
-	ALBEDO = tex * tint.rgb;
-}
-"""
-	var m := ShaderMaterial.new()
-	m.shader = sh
-	m.set_shader_parameter("cave_tex", load("res://assets/cave_texture.jpg"))
-	m.set_shader_parameter("tint", tint)
-	return m
-
-
-func _make_surface_mat(color: Color, holes: Array) -> Material:
-	var sh  := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode cull_disabled;
-uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, repeat_enable;
-uniform float tile_scale = 2.0;
-uniform vec4 albedo_bottom: source_color = vec4(0.25, 0.22, 0.20, 1.0);
-uniform vec2 hole_centers[16];
-uniform float hole_radii[16];
-uniform int hole_count = 0;
-
-varying vec3 world_pos;
-
-void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-
-void fragment() {
-	for (int i = 0; i < hole_count; i++) {
-		if (length(world_pos.xz - hole_centers[i]) < hole_radii[i]) discard;
-	}
-	vec4 tex = texture(albedo_texture, world_pos.xz / 66.0);
-	ALBEDO = FRONT_FACING ? tex.rgb * vec3(0.85, 1.2, 0.75) : albedo_bottom.rgb;
-}
-"""
-	var mat := ShaderMaterial.new()
-	mat.shader = sh
-	mat.set_shader_parameter("albedo_texture", load("res://assets/tileable_grass.png"))
-	mat.set_shader_parameter("tile_scale",     21.0)
-	mat.set_shader_parameter("albedo_bottom",  Color(0.25, 0.22, 0.20))
-	mat.set_shader_parameter("hole_count", mini(holes.size(), 16))
-
-	var centers := PackedVector2Array()
-	var radii   := PackedFloat32Array()
-	for j in range(mini(holes.size(), 16)):
-		centers.append((holes[j] as Dictionary)["center"])
-		radii.append((holes[j] as Dictionary)["radius"])
-	while centers.size() < 16:
-		centers.append(Vector2.ZERO)
-		radii.append(0.0)
-
-	mat.set_shader_parameter("hole_centers", centers)
-	mat.set_shader_parameter("hole_radii", radii)
-	return mat
-
-
-
-func _get_biome_surface_mat(biome_id: int, holes: Array) -> Material:
-	var mat_name := "grassland"
-	for _bdef in _biomes:
-		if (_bdef as Dictionary)["id"] == biome_id:
-			mat_name = (_bdef as Dictionary).get("material", "grassland") as String
-			break
-	var color := Color(0.35, 0.52, 0.28)
-	match mat_name:
-		"grassland":    color = Color(0.35, 0.52, 0.28)
-		"forest":       color = Color(0.18, 0.38, 0.16)
-		"elven_floor":  color = Color(0.25, 0.48, 0.32)
-		"slime_ground": color = Color(0.28, 0.50, 0.18)
-		"desert_sand":  color = Color(0.78, 0.68, 0.45)
-		"snow":         color = Color(0.88, 0.90, 0.93)
-		"swamp_mud":    color = Color(0.28, 0.32, 0.18)
-	return _make_surface_mat(color, holes)
 

@@ -13,6 +13,8 @@ signal vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana
 signal floor_item_spawned(net_id: int, def_id: int, pos: Vector3)
 signal floor_item_destroyed(net_id: int)
 signal equip_synced(net_id: int, slot: int, item_def_id: int)
+signal xp_gained(monster_net_id: int, player_ids: Array)
+signal level_up(net_id: int, new_level: int)
 
 const HOST     = "127.0.0.1"
 const PORT     = 7777
@@ -90,6 +92,15 @@ func _parse(data: PackedByteArray) -> void:
 			floor_item_destroyed.emit(data.decode_u32(1))
 		0x10: # EquipSync: net_id(u32) slot(u8) item_def_id(u8)
 			equip_synced.emit(data.decode_u32(1), data[5], data[6])
+		0x12: # LevelUp: player_net_id(u32) new_level(u32)
+			level_up.emit(data.decode_u32(1), data.decode_u32(5))
+		0x11: # XpGain: monster_net_id(u32) count(u8) [player_net_id(u32)×count]
+			var _monster_id := data.decode_u32(1)
+			var _count := data[5]
+			var _ids: Array = []
+			for i in _count:
+				_ids.append(data.decode_u32(6 + i * 4))
+			xp_gained.emit(_monster_id, _ids)
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

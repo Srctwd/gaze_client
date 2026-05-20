@@ -3,27 +3,28 @@ extends Node
 @onready var _entity_manager: Node          = $"../EntityManager"
 @onready var _camera:         CameraController = $"../Camera3D"
 
-var player_net_id: int = -1:
-	set(value):
-		if value == -1:
-			_set_highlight(_current_target, false)
-			_current_target = -1
-		player_net_id = value
-
 var _current_target: int = -1
+
+func _ready() -> void:
+	GameState.player_id_changed.connect(_on_player_id_changed)
+
+func _on_player_id_changed(net_id: int) -> void:
+	if net_id == -1:
+		_set_highlight(_current_target, false)
+		_current_target = -1
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey \
 			and event.keycode == KEY_TAB \
 			and event.pressed and not event.echo \
-			and player_net_id != -1:
+			and GameState.player_net_id != -1:
 		_select_target()
 
 func _select_target() -> void:
 	var screen_center := get_viewport().get_visible_rect().size * 0.5
 	var player_pos    := Vector3.ZERO
-	if _entity_manager.entities.has(player_net_id):
-		player_pos = (_entity_manager.entities[player_net_id] as StaticBody3D).position
+	if _entity_manager.entities.has(GameState.player_net_id):
+		player_pos = (_entity_manager.entities[GameState.player_net_id] as StaticBody3D).position
 
 	var best_id      := -1
 	var best_score   := INF
@@ -31,17 +32,12 @@ func _select_target() -> void:
 	var second_score := INF
 
 	for net_id in _entity_manager.entities:
-		if net_id == player_net_id:
+		if net_id == GameState.player_net_id:
 			continue
-		var body      := _entity_manager.entities[net_id] as StaticBody3D
-		var to_target: Vector3 = (body.position - _camera.global_position).normalized()
-		var cam_fwd:   Vector3 = -_camera.global_transform.basis.z
-		if cam_fwd.dot(to_target) < cos(deg_to_rad(70.0)):
+		var body  := _entity_manager.entities[net_id] as StaticBody3D
+		var score := _score_candidate(body.position, player_pos, screen_center)
+		if score == INF:
 			continue
-		var screen_pos  := _camera.unproject_position(body.position)
-		var screen_dist := (screen_pos - screen_center).length() / screen_center.length()
-		var world_dist  := body.position.distance_to(player_pos) / 100.0
-		var score       := screen_dist * 3.0 + world_dist * 0.5
 		if score < best_score:
 			second_score = best_score
 			second_id    = best_id
@@ -67,34 +63,36 @@ func _select_target() -> void:
 	Network.send(Protocol.pkt_target(chosen))
 
 func pick_aimed_item(items: Dictionary) -> int:
-	if player_net_id == -1 or items.is_empty():
+	if GameState.player_net_id == -1 or items.is_empty():
 		return -1
 	var screen_center := get_viewport().get_visible_rect().size * 0.5
 	var player_pos    := Vector3.ZERO
-	if _entity_manager.entities.has(player_net_id):
-		player_pos = (_entity_manager.entities[player_net_id] as StaticBody3D).position
+	if _entity_manager.entities.has(GameState.player_net_id):
+		player_pos = (_entity_manager.entities[GameState.player_net_id] as StaticBody3D).position
 	var best_id    := -1
 	var best_score := INF
 	for net_id in items:
 		var node := items[net_id] as Node3D
 		if node == null: continue
-		var to_item: Vector3 = (node.position - _camera.global_position).normalized()
-		var cam_fwd: Vector3 = -_camera.global_transform.basis.z
-		if cam_fwd.dot(to_item) < cos(deg_to_rad(70.0)):
-			continue
-		var screen_pos  := _camera.unproject_position(node.position)
-		var screen_dist := (screen_pos - screen_center).length() / screen_center.length()
-		var world_dist  := node.position.distance_to(player_pos) / 100.0
-		var score       := screen_dist * 3.0 + world_dist * 0.5
+		var score := _score_candidate(node.position, player_pos, screen_center)
 		if score < best_score:
 			best_score = score
 			best_id    = net_id
 	return best_id
 
+# Returns INF if outside the targeting cone.
+func _score_candidate(world_pos: Vector3, player_pos: Vector3, screen_center: Vector2) -> float:
+	var to_target := (world_pos - _camera.global_position).normalized()
+	if -_camera.global_transform.basis.z.dot(to_target) < cos(deg_to_rad(Config.TARGETING_FOV_DEG)):
+		return INF
+	var screen_dist := (_camera.unproject_position(world_pos) - screen_center).length() / screen_center.length()
+	var world_dist  := world_pos.distance_to(player_pos) / Config.TARGETING_WORLD_NORM
+	return screen_dist * Config.TARGETING_SCREEN_WEIGHT + world_dist * Config.TARGETING_WORLD_WEIGHT
+
 func _get_mi(net_id: int) -> MeshInstance3D:
 	if not _entity_manager.entities.has(net_id):
 		return null
-	var body := _entity_manager.entities[net_id] as StaticBody3D
+	var body    := _entity_manager.entities[net_id] as StaticBody3D
 	var results := body.find_children("*", "MeshInstance3D", true, false)
 	return results[0] as MeshInstance3D if results.size() > 0 else null
 
