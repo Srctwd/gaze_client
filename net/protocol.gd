@@ -29,6 +29,7 @@ const UNIT_MINOTAUR  := 0x02
 const UNIT_MINO_MAGE := 0x03
 const UNIT_SLIME     := 0x04
 const UNIT_SNAKE     := 0x05
+const UNIT_GOBLIN    := 0x06
 
 # ── Action types (ActionType enum) ────────────────────────────────────────
 const ACTION_NOTHING := 0

@@ -27,6 +27,7 @@ func _ready() -> void:
 	GameState.first_person_changed.connect(_on_first_person_changed)
 	Network.equip_synced.connect(_on_equip_synced)
 	Network.action_ok.connect(_on_action_ok)
+	Network.login_ok.connect(func(_id): _set_hand_node(_fp_weapon, null))
 
 func _on_action_ok(actor_id: int, _effect: int, _target_id: int, action_type: int) -> void:
 	if action_type != Protocol.ACTION_ATTACK:

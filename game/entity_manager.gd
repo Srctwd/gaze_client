@@ -39,6 +39,7 @@ func _ready() -> void:
 	_mesh_by_type[Protocol.UNIT_MINOTAUR]  = load("res://assets/minotaur.obj")
 	_mesh_by_type[Protocol.UNIT_MINO_MAGE] = load("res://assets/stone_man.glb")
 	_mesh_by_type[Protocol.UNIT_SNAKE]     = load("res://assets/snake.glb")
+	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/goblin01.glb")
 	_slime_scenes = [
 		load("res://assets/slime_green.glb"),  # 0 green
 		load("res://assets/slime_blue.glb"),   # 1 blue
