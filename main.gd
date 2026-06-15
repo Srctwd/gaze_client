@@ -25,6 +25,10 @@ func _ready() -> void:
 	add_child(equipment)
 	player_controller.set("floor_items", floor_items)
 
+	var options_menu := preload("res://ui/options_menu.gd").new()
+	add_child(options_menu)
+	options_menu.set_camera(camera)
+
 	_black_bg = CanvasLayer.new()
 	_black_bg.layer = -1
 	var rect := ColorRect.new()

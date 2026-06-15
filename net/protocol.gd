@@ -19,9 +19,18 @@ const PICKUP_REQUEST     := 0x0F
 const EQUIP_SYNC         := 0x10
 const XP_GAIN            := 0x11
 const LEVEL_UP           := 0x12
+const SLOT_SWAP_REQUEST  := 0x13
+
+# ── Gear slots (must match GearSlot enum in inventory.h) ───────────────────
+const SLOT_MAINHAND := 0
+const SLOT_OFFHAND  := 1
+const SLOT_HEADGEAR := 2
+const SLOT_ARMOR    := 3
+const SLOT_SHEATH   := 9
 
 # ── Item defs ──────────────────────────────────────────────────────────────
-const ITEM_STICK := 1
+const ITEM_STICK                := 1
+const ITEM_ROUGH_LEATHER_HELMET := 2
 
 # ── Unit types ─────────────────────────────────────────────────────────────
 const UNIT_PLAYER    := 0x01
@@ -38,8 +47,9 @@ const ACTION_ATTACK  := 2
 const ACTION_SPELL   := 3
 
 # ── Action request opcodes (client → server) ───────────────────────────────
-const ACTION_REQ_JUMP  := 0x01
-const ACTION_REQ_PUNCH := 0x02
+const ACTION_REQ_JUMP   := 0x01  # ActionType::Jump
+const ACTION_REQ_ATTACK := 0x02  # ActionType::Attack
+const ACTION_REQ_DROP   := 0x07  # ActionType::Drop
 
 # ── Effect types ───────────────────────────────────────────────────────────
 const EFFECT_LIGHTNING  := 0x01
@@ -93,4 +103,12 @@ static func pkt_action(action_type: int) -> PackedByteArray:
 	pkt.resize(2)
 	pkt[0] = ACTION_REQUEST
 	pkt[1] = action_type
+	return pkt
+
+static func pkt_slot_swap(slot_a: int, slot_b: int) -> PackedByteArray:
+	var pkt := PackedByteArray()
+	pkt.resize(3)
+	pkt[0] = SLOT_SWAP_REQUEST
+	pkt[1] = slot_a
+	pkt[2] = slot_b
 	return pkt

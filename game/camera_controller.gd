@@ -9,7 +9,7 @@ var first_person: bool    = true
 
 var _hud: CanvasLayer
 
-const MOUSE_SENSITIVITY: float = 0.005
+var mouse_sensitivity: float = 0.005
 const ZOOM_SPEED:        float = 1.5
 const ZOOM_MIN:          float = 3.0
 const ZOOM_MAX:          float = 40.0
@@ -46,8 +46,8 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion \
 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
 			and (first_person or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
-		yaw   -= event.relative.x * MOUSE_SENSITIVITY
-		pitch  = clamp(pitch - event.relative.y * MOUSE_SENSITIVITY,
+		yaw   -= event.relative.x * mouse_sensitivity
+		pitch  = clamp(pitch - event.relative.y * mouse_sensitivity,
 				PITCH_FP_MIN if first_person else PITCH_MIN,
 				PITCH_FP_MAX if first_person else PITCH_MAX)
 		_apply()

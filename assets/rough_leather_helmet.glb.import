@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://ck1xiw1phaa64"
-path="res://.godot/imported/stick.glb-88725026b118fb0286319012b377e2ef.scn"
+uid="uid://do7b44fwpg2em"
+path="res://.godot/imported/rough_leather_helmet.glb-6f3b4098c76aafd7a1cee5ba90edcaf0.scn"
 
 [deps]
 
-source_file="res://assets/stick.glb"
-dest_files=["res://.godot/imported/stick.glb-88725026b118fb0286319012b377e2ef.scn"]
+source_file="res://assets/rough_leather_helmet.glb"
+dest_files=["res://.godot/imported/rough_leather_helmet.glb-6f3b4098c76aafd7a1cee5ba90edcaf0.scn"]
 
 [params]
 
@@ -17,7 +17,7 @@ nodes/root_type=""
 nodes/root_name=""
 nodes/root_script=null
 nodes/apply_root_scale=true
-nodes/root_scale=1.5
+nodes/root_scale=0.5
 nodes/import_as_skeleton_bones=false
 nodes/use_name_suffixes=true
 nodes/use_node_type_suffixes=true
