@@ -1,6 +1,6 @@
 extends Node
 
-const WEBSERVER := "http://localhost:8000"
+const WEBSERVER := "http://159.223.108.158:3721"
 
 # Targeting
 const TARGETING_FOV_DEG      := 70.0
