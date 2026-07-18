@@ -56,7 +56,7 @@ func _ready() -> void:
 
 
 func _on_login_pressed(email: String, passkey: String) -> void:
-	var body := JSON.stringify({"email": email, "passkey": passkey})
+	var body := JSON.stringify({"email": email, "password": passkey})
 	_http.request(Config.WEBSERVER + "/api/login",
 		["Content-Type: application/json"],
 		HTTPClient.METHOD_POST, body)

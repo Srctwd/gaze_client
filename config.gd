@@ -1,6 +1,6 @@
 extends Node
 
-const WEBSERVER := "http://159.223.108.158:3721"
+const WEBSERVER := "https://stonegaze.link"
 
 # Targeting
 const TARGETING_FOV_DEG      := 70.0

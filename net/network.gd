@@ -16,7 +16,7 @@ signal equip_synced(net_id: int, slot: int, item_def_id: int)
 signal xp_gained(monster_net_id: int, player_ids: Array)
 signal level_up(net_id: int, new_level: int)
 
-const HOST     = "159.223.108.158"
+const HOST     = "stonegaze.link"
 const PORT     = 7777
 const CHANNELS = 2
 
