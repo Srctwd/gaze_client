@@ -1,0 +1,13 @@
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://bnmuvpoeuods2"]
+
+[resource]
+resource_name = "Material.001"
+specular_mode = 2
+albedo_color = Color(0.020629527, 0, 1, 1)
+metallic_specular = 1.0
+roughness = 0.0
+emission_enabled = true
+emission = Color(0, 0, 1, 1)
+emission_energy_multiplier = 10.3
+refraction_enabled = true
+refraction_scale = 1.0

@@ -4,6 +4,11 @@ extends RefCounted
 const MAGIC        := 0x47574C44  # "GWLD"
 const WorldShaders  = preload("res://world/world_shaders.gd")
 
+# Preloaded so the exporter includes them (paths come from world.bin at runtime)
+const _PRELOAD_FERN01   = preload("res://assets/fern01.glb")
+const _PRELOAD_FERN02   = preload("res://assets/fern02.glb")
+const _PRELOAD_GRASS_BUSH_SMALL = preload("res://assets/stylized_grass_bush_small.glb")
+
 var chunk_cells : int
 var chunks_x    : int
 var chunks_z    : int
@@ -22,8 +27,9 @@ var _holes          : Array = []
 var _material      : Material
 var _mat_cave      : ShaderMaterial
 var _mat_cave_floor: ShaderMaterial
-var _tree_scene    : PackedScene = null
-var _rock_scene    : PackedScene = null
+var _tree_scene            : PackedScene = null
+var _rock_scene            : PackedScene = null
+var _frozenstarlight_scene : PackedScene = null
 
 
 func load(path: String) -> bool:
@@ -156,8 +162,9 @@ func load(path: String) -> bool:
 	_material      = WorldShaders.surface_mat(Color(0.35, 0.52, 0.28), _holes)
 	_mat_cave       = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))
 	_mat_cave_floor = WorldShaders.cave_mat(Color(0.30, 0.20, 0.13))
-	_tree_scene    = load("res://assets/tree01.glb")
-	_rock_scene    = load("res://assets/rock01.glb")
+	_tree_scene           = load("res://assets/tree01.glb")
+	_rock_scene           = load("res://assets/rock01.glb")
+	_frozenstarlight_scene = load("res://assets/frozenstarlight.glb")
 	return true
 
 
@@ -186,14 +193,24 @@ func spawn_into(parent: Node3D) -> void:
 			parent.add_child(_make_chunk(_chunks[i].h3, origin, _mat_cave))
 
 	for obj in _static_objects:
-		var wy    := _get_height_at(obj.x, obj.z)
-		var scene := _tree_scene if obj.type == 0 else _rock_scene
-		if scene:
-			var node  := scene.instantiate() as Node3D
-			var sc    := (obj.radius as float) / (2.0 if obj.type == 0 else 1.0)
-			node.position = Vector3(obj.x, wy, obj.z)
-			node.scale    = Vector3.ONE * sc
-			parent.add_child(node)
+		var wy   := _get_height_at(obj.x, obj.z)
+		var node : Node3D
+		var sc   : float
+		if obj.type == 2:
+			if _frozenstarlight_scene == null: continue
+			node = _frozenstarlight_scene.instantiate() as Node3D
+			sc   = (obj.radius as float) / 1.5
+		elif obj.type == 0:
+			if _tree_scene == null: continue
+			node = _tree_scene.instantiate() as Node3D
+			sc   = (obj.radius as float) / 2.0
+		else:
+			if _rock_scene == null: continue
+			node = _rock_scene.instantiate() as Node3D
+			sc   = (obj.radius as float) / 1.0
+		node.position = Vector3(obj.x, wy, obj.z)
+		node.scale    = Vector3.ONE * sc
+		parent.add_child(node)
 
 	var water_mat := WorldShaders.water_mat()
 	for wr in _water_rects:
