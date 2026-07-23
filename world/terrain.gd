@@ -19,3 +19,17 @@ func is_in_water(pos: Vector3) -> bool:
 		and pos.y <= wr.y:
 			return true
 	return false
+
+# Returns the nearest static object of the given type within max_dist (horizontal distance),
+# as {"x": float, "z": float}, or null if none in range.
+func nearest_static_object(pos: Vector3, obj_type: int, max_dist: float) -> Variant:
+	if _wd == null: return null
+	var best: Variant = null
+	var best_dist := max_dist
+	for obj in _wd._static_objects:
+		if obj.type != obj_type: continue
+		var d := Vector2(pos.x - (obj.x as float), pos.z - (obj.z as float)).length()
+		if d <= best_dist:
+			best_dist = d
+			best = obj
+	return best

@@ -15,6 +15,7 @@ signal floor_item_destroyed(net_id: int)
 signal equip_synced(net_id: int, slot: int, item_def_id: int)
 signal xp_gained(monster_net_id: int, player_ids: Array)
 signal level_up(net_id: int, new_level: int)
+signal talent_synced(points_available: int, learned: Array)
 
 const HOST     = "stonegaze.link"
 const PORT     = 7777
@@ -101,6 +102,13 @@ func _parse(data: PackedByteArray) -> void:
 			for i in _count:
 				_ids.append(data.decode_u32(6 + i * 4))
 			xp_gained.emit(_monster_id, _ids)
+		0x15: # TalentSync: points_available(u8) count(u8) [node_id(u8)]×count
+			var _points := data[1]
+			var _count  := data[2]
+			var _learned: Array = []
+			for i in _count:
+				_learned.append(data[3 + i])
+			talent_synced.emit(_points, _learned)
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

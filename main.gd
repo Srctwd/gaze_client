@@ -25,6 +25,8 @@ func _ready() -> void:
 	add_child(equipment)
 	player_controller.set("floor_items", floor_items)
 
+	add_child(preload("res://ui/talent_tree_ui.gd").new())
+
 	var options_menu := preload("res://ui/options_menu.gd").new()
 	add_child(options_menu)
 	options_menu.set_camera(camera)

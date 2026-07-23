@@ -1,0 +1,24 @@
+# Talent tree — single source of truth for the server's talent table.
+# Fields are whitespace-separated; name and description must be quoted with "...".
+# Tags and requires must not contain spaces.
+#
+# id               : must match a name in kIdNames (src/systems/talents.cpp) — add both together
+# name              : display name shown in the talent UI
+# tier              : row in the talent tree (0 = starting talents)
+# tags              : comma-separated, no spaces (e.g. magic,fire) — used by sum(group,N); "-" for none
+# requires          : "-" for none, or an expression of:
+#                       Id            — has that talent
+#                       A&B           — both A and B
+#                       A|B           — either A or B
+#                       (A|B)&C       — parentheses for grouping
+#                       sum(group,N)  — at least N learned talents tagged with group
+# description       : shown as tooltip text in the talent UI
+#
+# id               name                tier  tags               requires                                        description
+ArcaneKnowledge   "Arcane Knowledge"    0     magic,arcane       -                                               "Foundational arcane study. Required by most arcane talents."
+FireKnowledge     "Fire Knowledge"      0     magic,fire         -                                               "Foundational fire study. Required by most fire talents."
+FrostKnowledge    "Frost Knowledge"     0     magic,frost        -                                               "Foundational frost study. Required by most frost talents."
+BasicTraining     "Basic Training"      0     weapon             -                                               "Improves basic weapon proficiency."
+Flames            "Flames"              1     magic,fire         FireKnowledge                                   "Ignites nearby enemies periodically."
+FireBolt          "FireBolt"            1     magic,fire,arcane  ArcaneKnowledge&FireKnowledge                   "Launches a bolt of fire at the target."
+ArcaneBurst       "Arcane Burst"        2     magic,arcane       (FireKnowledge|FrostKnowledge)&ArcaneKnowledge  "Releases a burst of raw arcane energy."
