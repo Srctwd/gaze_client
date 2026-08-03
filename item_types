@@ -1,0 +1,20 @@
+# Static item type table — single source of truth for item def ids used as
+# FloorItem::def_id and EquipTable slot values (server-side only, no client/editor consumer).
+# Parsed by src/systems/item_types.cpp; ItemDef in src/components/item.h fixes the id values.
+# Columns are whitespace-separated (any amount tolerated).
+#
+# id     : matches the ItemDef enum value in item.h — DO NOT reuse or reorder existing ids
+# name    : display name
+# slots   : comma-separated GearSlot names this item can be equipped into ("-" = not equippable)
+#           valid names: MainHand,OffHand,Headgear,BodyArmor,Gloves,Boots,Bag,Necklace,Trinket,Sheath
+# style   : attack style — Melee | HomingDistance | FreeAimDistance ("-" = n/a, defaults Melee)
+# damage  : base weapon damage
+# speed   : attack_speed_mult — multiplies base attack delay (>1 = slower, <1 = faster)
+#
+# id  name                slots                      style             damage   speed
+1     Stick               MainHand,OffHand,Sheath    Melee             5.0      1.0
+2     RoughLeatherHelmet  Headgear                   -                 0.0      1.0
+3     WoodenBow           MainHand,OffHand,Sheath    FreeAimDistance   4.0      2.0
+4     ThrowingDagger      MainHand,OffHand,Sheath    FreeAimDistance   3.0      0.7
+5     NoviceStaff         MainHand,OffHand,Sheath    FreeAimDistance   3.0      1.2
+6     Torch               MainHand,OffHand,Sheath    Melee             5.0      1.0

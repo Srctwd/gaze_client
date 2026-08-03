@@ -1,24 +1,40 @@
 # Talent tree — single source of truth for the server's talent table.
 # Fields are whitespace-separated; name and description must be quoted with "...".
-# Tags and requires must not contain spaces.
+# Tags, requires, bonus, and effects must not contain spaces.
 #
-# id               : must match a name in kIdNames (src/systems/talents.cpp) — add both together
-# name              : display name shown in the talent UI
-# tier              : row in the talent tree (0 = starting talents)
-# tags              : comma-separated, no spaces (e.g. magic,fire) — used by sum(group,N); "-" for none
-# requires          : "-" for none, or an expression of:
-#                       Id            — has that talent
-#                       A&B           — both A and B
-#                       A|B           — either A or B
-#                       (A|B)&C       — parentheses for grouping
-#                       sum(group,N)  — at least N learned talents tagged with group
-# description       : shown as tooltip text in the talent UI
+# id          : numeric id sent over the wire and stored in the DB
+#               (character_talents.node_id) — NEVER reuse or reorder an
+#               existing id, only append new ones.
+# key         : bare identifier used to reference this talent from another
+#               talent's requires expression (no spaces).
+# name        : display name shown in the talent UI (quoted).
+# tier        : row in the talent tree (0 = starting talents).
+# tags        : comma-separated, no spaces (e.g. magic,fire) — used by sum(group,N); "-" for none.
+# requires    : "-" for none, or an expression of:
+#                 Key           — has that talent
+#                 A&B           — both A and B
+#                 A|B           — either A or B
+#                 (A|B)&C       — parentheses for grouping
+#                 sum(group,N)  — at least N learned talents tagged with group
+# bonus       : "-" for none, or comma-separated "stat<op>value" numeric modifiers,
+#               e.g. "weapon_damage+10,life_steal*1.1". Combine rule across all
+#               learned talents: final = (base + sum of +/-) * (1 + sum of increased
+#               percentages from */). Only "increased" exists — no independent
+#               multiplicative stacking, so two +10% sources give +20%, not +21%.
+#               Stats are always in the same units the base value uses — e.g.
+#               "bow_range" is linear world units, not the squared AttackRange
+#               the server stores internally (see recompute_attack_range()).
+# effects     : "-" for none, or comma-separated non-numeric flags (e.g. "LifeSteal")
+#               that gameplay code checks for directly — see TalentEffects.has_flag().
+# description : shown as tooltip text in the talent UI (quoted).
 #
-# id               name                tier  tags               requires                                        description
-ArcaneKnowledge   "Arcane Knowledge"    0     magic,arcane       -                                               "Foundational arcane study. Required by most arcane talents."
-FireKnowledge     "Fire Knowledge"      0     magic,fire         -                                               "Foundational fire study. Required by most fire talents."
-FrostKnowledge    "Frost Knowledge"     0     magic,frost        -                                               "Foundational frost study. Required by most frost talents."
-BasicTraining     "Basic Training"      0     weapon             -                                               "Improves basic weapon proficiency."
-Flames            "Flames"              1     magic,fire         FireKnowledge                                   "Ignites nearby enemies periodically."
-FireBolt          "FireBolt"            1     magic,fire,arcane  ArcaneKnowledge&FireKnowledge                   "Launches a bolt of fire at the target."
-ArcaneBurst       "Arcane Burst"        2     magic,arcane       (FireKnowledge|FrostKnowledge)&ArcaneKnowledge  "Releases a burst of raw arcane energy."
+# id  key                 name                     tier  tags               requires                                        bonus  effects  description
+0     ArcaneKnowledge     "Arcane Knowledge"       0     magic,arcane       -                                               -      -        "Foundational arcane study. Required by most arcane talents."
+1     FireKnowledge       "Fire Knowledge"         0     magic,fire         -                                               -      -        "Foundational fire study. Required by most fire talents."
+2     FrostKnowledge      "Frost Knowledge"        0     magic,frost        -                                               -      -        "Foundational frost study. Required by most frost talents."
+3     Flames              "Flames"                 1     magic,fire         FireKnowledge                                   -      -        "Ignites nearby enemies periodically."
+4     FireBolt            "FireBolt"               1     magic,fire,arcane  ArcaneKnowledge&FireKnowledge                   -      -        "Launches a bolt of fire at the target."
+5     ArcaneBurst         "Arcane Burst"           2     magic,arcane       (FireKnowledge|FrostKnowledge)&ArcaneKnowledge  -      -        "Releases a burst of raw arcane energy."
+6     BasicTraining       "Basic Training"         0     weapon             -                                               weapon_damage+2,weapon_damage*1.07  -  "Improves weapon proficiency."
+7     DistanceTraining    "Distance Training"      1     weapon,bow         BasicTraining                                   distance_range+2  -  "Improves distance proficiency."
+8     ArcaneMarksmanship  "Arcane Marksmanship"    3     weapon,bow,arcane  DistanceTraining&ArcaneKnowledge                -      -        "Improves distance fighting with magic."

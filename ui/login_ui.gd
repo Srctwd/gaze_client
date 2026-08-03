@@ -2,8 +2,11 @@ extends CanvasLayer
 
 signal login_pressed(email: String, passkey: String)
 
+const _SAVE_PATH := "user://login.cfg"
+
 var _username_field: LineEdit
 var _password_field: LineEdit
+var _remember_check: CheckBox
 var _error_label:    Label
 
 func _ready() -> void:
@@ -37,17 +40,41 @@ func _ready() -> void:
 	btn.pressed.connect(_on_login_pressed)
 	vbox.add_child(btn)
 
+	_remember_check = CheckBox.new()
+	_remember_check.text = "Remember email"
+	vbox.add_child(_remember_check)
+
 	_error_label = Label.new()
 	_error_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_error_label.visible = false
 	vbox.add_child(_error_label)
 
 	visible = false
+	_load_saved_email()
 
 func show_error(msg: String) -> void:
 	_error_label.text = msg
+	_error_label.visible = true
 
 func clear_error() -> void:
 	_error_label.text = ""
+	_error_label.visible = false
+
+func _load_saved_email() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(_SAVE_PATH) != OK:
+		return
+	var email: String = cfg.get_value("login", "email", "")
+	if not email.is_empty():
+		_username_field.text = email
+		_remember_check.button_pressed = true
+
+func _save_email(email: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(_SAVE_PATH)  # ignore errors — a missing/corrupt file just starts empty
+	cfg.set_value("login", "email", email if _remember_check.button_pressed else "")
+	cfg.save(_SAVE_PATH)
 
 func _on_login_pressed() -> void:
+	_save_email(_username_field.text)
 	login_pressed.emit(_username_field.text, _password_field.text)

@@ -3,6 +3,8 @@ extends CanvasLayer
 var _hp_bar:   ProgressBar
 var _mana_bar: ProgressBar
 var _underwater: ColorRect
+var _crosshair: Control
+var _bars_visible: bool = false
 
 
 func _ready() -> void:
@@ -26,6 +28,12 @@ func _ready() -> void:
 
 	vbox.visible = false
 
+	_crosshair = _make_crosshair()
+	_crosshair.visible = false
+	add_child(_crosshair)
+
+	GameState.aim_enabled_changed.connect(func(_v): _update_crosshair())
+
 
 const _BASE_WIDTH  := 200.0
 const _MAX_WIDTH   := 500.0
@@ -33,9 +41,30 @@ const _BASE_HEALTH := 25.0
 
 func show_bars() -> void:
 	_hp_bar.get_parent().visible = true
+	_bars_visible = true
+	_update_crosshair()
 
 func hide_bars() -> void:
 	_hp_bar.get_parent().visible = false
+	_bars_visible = false
+	_update_crosshair()
+
+func _update_crosshair() -> void:
+	_crosshair.visible = _bars_visible and GameState.aim_enabled
+
+func _make_crosshair() -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(8, 8)
+	c.size = c.custom_minimum_size
+	c.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.draw.connect(func():
+		var mid := c.custom_minimum_size * 0.5
+		var col := Color(1, 1, 1, 0.8)
+		c.draw_line(Vector2(mid.x, 0), Vector2(mid.x, c.custom_minimum_size.y), col, 2.0)
+		c.draw_line(Vector2(0, mid.y), Vector2(c.custom_minimum_size.x, mid.y), col, 2.0)
+	)
+	return c
 
 func set_underwater(val: bool) -> void:
 	_underwater.visible = val

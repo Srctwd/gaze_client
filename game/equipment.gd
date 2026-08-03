@@ -1,10 +1,5 @@
 extends Node
 
-const _ITEM_MESHES := {
-	Protocol.ITEM_STICK:                preload("res://assets/stick.glb"),
-	Protocol.ITEM_ROUGH_LEATHER_HELMET: preload("res://assets/rough_leather_helmet.glb"),
-}
-
 const _HAND_POS := Vector3(0.45, 0.9, 0.1)
 const _HAND_ROT := Vector3(0, 0, 90)
 const _HEAD_POS := Vector3(0, 1.7, 0)
@@ -20,6 +15,7 @@ const _FP_OFFHAND_ROT := Vector3(80, 1, -90)
 var _fp_weapon:  Node3D
 var _fp_offhand: Node3D
 var _swinging: bool = false
+var _mainhand: Dictionary = {}  # net_id -> item_def_id currently equipped in SLOT_MAINHAND
 
 func _ready() -> void:
 	_fp_weapon = Node3D.new()
@@ -37,6 +33,7 @@ func _ready() -> void:
 	GameState.first_person_changed.connect(_on_first_person_changed)
 	Network.equip_synced.connect(_on_equip_synced)
 	Network.action_ok.connect(_on_action_ok)
+	Network.free_aim_shot.connect(_on_free_aim_shot)
 	Network.login_ok.connect(func(_id):
 		_set_hand_node(_fp_weapon, null)
 		_set_hand_node(_fp_offhand, null)
@@ -45,6 +42,15 @@ func _ready() -> void:
 func _on_action_ok(actor_id: int, _effect: int, _target_id: int, action_type: int) -> void:
 	if action_type != Protocol.ACTION_ATTACK:
 		return
+	_try_swing(actor_id)
+
+# Free-aim attacks (bow/dagger) no longer also send a separate ActionOk — that
+# was a second network_broadcast (and enet_host_flush) per shot for no benefit
+# beyond triggering this same animation, which FreeAimShot already covers.
+func _on_free_aim_shot(actor_id: int, _origin: Vector3, _yaw: float, _pitch: float, _speed: float, _max_range: float, _effect: int) -> void:
+	_try_swing(actor_id)
+
+func _try_swing(actor_id: int) -> void:
 	if actor_id != GameState.player_net_id:
 		return
 	if not _swinging and _fp_weapon.visible:
@@ -63,33 +69,58 @@ func _on_first_person_changed(fp: bool) -> void:
 	_fp_weapon.visible  = fp
 	_fp_offhand.visible = fp
 
+func get_mainhand_item(net_id: int) -> int:
+	return _mainhand.get(net_id, -1)
+
 func _on_equip_synced(net_id: int, slot: int, item_def_id: int) -> void:
-	var scene: PackedScene = _ITEM_MESHES.get(item_def_id)
+	if slot == Protocol.SLOT_MAINHAND:
+		_mainhand[net_id] = item_def_id
+
+	var item_name: String = Protocol.item_name_by_id.get(item_def_id, "")
+	var prefab: PackedScene = Protocol.get_item_prefab(item_name)
 	if net_id == GameState.player_net_id:
 		match slot:
 			Protocol.SLOT_MAINHAND:
-				_set_hand_node(_fp_weapon, scene)
+				_set_hand_node(_fp_weapon, prefab)
 			Protocol.SLOT_OFFHAND:
-				_set_hand_node(_fp_offhand, scene)
+				_set_hand_node(_fp_offhand, prefab)
 			Protocol.SLOT_HEADGEAR:
 				var body := _entity_manager.entities.get(net_id) as StaticBody3D
 				if body:
-					_set_hand_node(_get_or_create_head(body), scene)
+					_set_hand_node(_get_or_create_head(body), prefab)
 	else:
 		var body := _entity_manager.entities.get(net_id) as StaticBody3D
 		if body == null:
 			return
 		match slot:
 			Protocol.SLOT_MAINHAND:
-				_set_hand_node(_get_or_create_hand(body), scene)
+				_set_hand_node(_get_or_create_hand(body), prefab)
 			Protocol.SLOT_HEADGEAR:
-				_set_hand_node(_get_or_create_head(body), scene)
+				_set_hand_node(_get_or_create_head(body), prefab)
 
-func _set_hand_node(parent: Node3D, scene: PackedScene) -> void:
+# No prefab (res://assets/items/<Name>.tscn missing) means the item def has
+# no client-side representation yet — render nothing rather than guess.
+func _set_hand_node(parent: Node3D, prefab: PackedScene) -> void:
 	for c in parent.get_children():
 		c.queue_free()
-	if scene:
-		parent.add_child(scene.instantiate())
+	if prefab == null:
+		return
+	var node := prefab.instantiate()
+	if node is ItemPrefab:
+		# Align the prefab's GripPoint marker to `parent` (the hand/FP anchor)
+		# by wrapping it in a node that cancels the marker's POSITION only —
+		# never rotation or scale. The item's root transform is whatever
+		# orientation/scale correction its author baked in (which may live on
+		# the root itself, e.g. Torch, or on a child, e.g. NoviceStaff) and
+		# must survive untouched; a pure translation zeroes the marker's world
+		# offset without ever touching that root basis.
+		var grip: Transform3D = (node as ItemPrefab).get_grip_transform()
+		var wrapper := Node3D.new()
+		wrapper.transform = Transform3D(Basis.IDENTITY, -grip.origin)
+		wrapper.add_child(node)
+		parent.add_child(wrapper)
+	else:
+		parent.add_child(node)
 
 func _get_or_create_hand(body: StaticBody3D) -> Node3D:
 	var hand := body.get_node_or_null("RightHand")

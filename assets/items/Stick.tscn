@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://bkl8g2r3s7r5n"]
+
+[ext_resource type="PackedScene" uid="uid://ck1xiw1phaa64" path="res://assets/stick.glb" id="1"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2"]
+
+[node name="Stick" unique_id=1539408691 instance=ExtResource("1")]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, 0, 0, 0)
+script = ExtResource("2")
+grip_point = NodePath("Marker3D")
+
+[node name="Icosphere" parent="." index="0" unique_id=202992471]
+script = ExtResource("2")
+
+[node name="Marker3D" type="Marker3D" parent="." index="1" unique_id=1162246115]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5280744)

@@ -16,6 +16,7 @@ signal equip_synced(net_id: int, slot: int, item_def_id: int)
 signal xp_gained(monster_net_id: int, player_ids: Array)
 signal level_up(net_id: int, new_level: int)
 signal talent_synced(points_available: int, learned: Array)
+signal free_aim_shot(actor_id: int, origin: Vector3, yaw: float, pitch: float, speed: float, max_range: float, effect: int)
 
 const HOST     = "stonegaze.link"
 const PORT     = 7777
@@ -109,6 +110,11 @@ func _parse(data: PackedByteArray) -> void:
 			for i in _count:
 				_learned.append(data[3 + i])
 			talent_synced.emit(_points, _learned)
+		0x17: # FreeAimShot: actor(u32) origin(f32×3) yaw(f32) pitch(f32) speed(f32) max_range(f32) effect(u8)
+			free_aim_shot.emit(data.decode_u32(1),
+				Vector3(data.decode_float(5), data.decode_float(9), data.decode_float(13)),
+				data.decode_float(17), data.decode_float(21), data.decode_float(25), data.decode_float(29),
+				data[33])
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

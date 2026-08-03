@@ -52,7 +52,7 @@ void fragment() {
 	return m
 
 
-static func surface_mat(color: Color, holes: Array) -> ShaderMaterial:
+static func surface_mat(color: Color) -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
@@ -60,9 +60,6 @@ render_mode cull_disabled;
 uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, repeat_enable;
 uniform float tile_scale = 2.0;
 uniform vec4 albedo_bottom: source_color = vec4(0.25, 0.22, 0.20, 1.0);
-uniform vec2 hole_centers[16];
-uniform float hole_radii[16];
-uniform int hole_count = 0;
 
 varying vec3 world_pos;
 
@@ -71,9 +68,7 @@ void vertex() {
 }
 
 void fragment() {
-	for (int i = 0; i < hole_count; i++) {
-		if (length(world_pos.xz - hole_centers[i]) < hole_radii[i]) discard;
-	}
+	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
 	vec4 tex = texture(albedo_texture, world_pos.xz / 66.0);
 	ALBEDO = FRONT_FACING ? tex.rgb * vec3(0.85, 1.2, 0.75) : albedo_bottom.rgb;
 }
@@ -83,23 +78,10 @@ void fragment() {
 	mat.set_shader_parameter("albedo_texture", _GRASS_TEX)
 	mat.set_shader_parameter("tile_scale",     21.0)
 	mat.set_shader_parameter("albedo_bottom",  Color(0.25, 0.22, 0.20))
-	mat.set_shader_parameter("hole_count",     mini(holes.size(), 16))
-
-	var centers := PackedVector2Array()
-	var radii   := PackedFloat32Array()
-	for j in range(mini(holes.size(), 16)):
-		centers.append((holes[j] as Dictionary)["center"])
-		radii.append((holes[j] as Dictionary)["radius"])
-	while centers.size() < 16:
-		centers.append(Vector2.ZERO)
-		radii.append(0.0)
-
-	mat.set_shader_parameter("hole_centers", centers)
-	mat.set_shader_parameter("hole_radii",   radii)
 	return mat
 
 
-static func biome_surface_mat(biome_id: int, holes: Array, biomes: Array) -> ShaderMaterial:
+static func biome_surface_mat(biome_id: int, biomes: Array) -> ShaderMaterial:
 	var mat_name := "grassland"
 	for bdef in biomes:
 		if (bdef as Dictionary)["id"] == biome_id:
@@ -114,4 +96,4 @@ static func biome_surface_mat(biome_id: int, holes: Array, biomes: Array) -> Sha
 		"desert_sand":  color = Color(0.78, 0.68, 0.45)
 		"snow":         color = Color(0.88, 0.90, 0.93)
 		"swamp_mud":    color = Color(0.28, 0.32, 0.18)
-	return surface_mat(color, holes)
+	return surface_mat(color)

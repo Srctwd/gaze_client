@@ -39,6 +39,20 @@ func _ready() -> void:
 	vsync_check.toggled.connect(_on_vsync)
 	_row(main_page, "VSync", vsync_check)
 
+	var aim_check := CheckButton.new()
+	aim_check.button_pressed = GameState.aim_enabled
+	aim_check.toggled.connect(_on_aim)
+	_row(main_page, "Aim", aim_check)
+
+	var interp_slider := HSlider.new()
+	interp_slider.min_value = 10.0
+	interp_slider.max_value = 70.0
+	interp_slider.step = 1.0
+	interp_slider.value = GameState.interp_rate
+	interp_slider.custom_minimum_size = Vector2(100, 0)
+	interp_slider.value_changed.connect(_on_interp_rate)
+	_row(main_page, "Interpolation Rate", interp_slider)
+
 	main_page.add_child(HSeparator.new())
 
 	var controls_btn := Button.new()
@@ -103,6 +117,14 @@ func _on_vsync(enabled: bool) -> void:
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if enabled else DisplayServer.VSYNC_DISABLED
 	)
+
+
+func _on_aim(enabled: bool) -> void:
+	GameState.aim_enabled = enabled
+
+
+func _on_interp_rate(val: float) -> void:
+	GameState.interp_rate = val
 
 
 func _on_sensitivity(val: float) -> void:

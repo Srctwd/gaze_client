@@ -1,0 +1,1 @@
+scp /home/srctwd/gaze_client/build/gaze_client.exe root@159.223.108.158:~/gaze_web/static/gaze_client.exe

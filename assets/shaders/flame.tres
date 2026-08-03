@@ -1,0 +1,20 @@
+[gd_resource type="VisualShader" format=3 uid="uid://cg5xua7hv8d45"]
+
+[sub_resource type="VisualShaderNodeTexture2DParameter" id="VisualShaderNodeTexture2DParameter_uabl3"]
+parameter_name = "Texture2DParameter"
+
+[sub_resource type="VisualShaderNodeTexture" id="VisualShaderNodeTexture_6hu5n"]
+source = 5
+
+[sub_resource type="VisualShaderNodeVectorDecompose" id="VisualShaderNodeVectorDecompose_t6kxf"]
+default_input_values = [0, Quaternion(0, 0, 0, 0)]
+op_type = 2
+
+[resource]
+nodes/fragment/2/node = SubResource("VisualShaderNodeTexture2DParameter_uabl3")
+nodes/fragment/2/position = Vector2(-503.50452, 238.63412)
+nodes/fragment/3/node = SubResource("VisualShaderNodeTexture_6hu5n")
+nodes/fragment/3/position = Vector2(-60, 400)
+nodes/fragment/4/node = SubResource("VisualShaderNodeVectorDecompose_t6kxf")
+nodes/fragment/4/position = Vector2(120, 640)
+nodes/fragment/connections = PackedInt32Array(3, 0, 0, 0, 2, 0, 3, 2, 3, 0, 4, 0, 4, 3, 0, 1)

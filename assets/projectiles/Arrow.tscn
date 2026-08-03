@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b411jxsxlin0k"]
+
+[ext_resource type="PackedScene" uid="uid://6s6fwtmkfjbi" path="res://assets/arrow.glb" id="1"]
+
+[node name="Arrow" unique_id=621780838 instance=ExtResource("1")]
+transform = Transform3D(-0.15, 0, -1.3113417e-08, 0, 0.15, 0, 1.3113417e-08, 0, -0.15, 0, 0, -0.7486641)

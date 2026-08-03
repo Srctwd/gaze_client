@@ -1,10 +1,5 @@
 extends Node
 
-const _ITEM_SCENES := {
-	Protocol.ITEM_STICK:                preload("res://assets/stick.glb"),
-	Protocol.ITEM_ROUGH_LEATHER_HELMET: preload("res://assets/rough_leather_helmet.glb"),
-}
-
 var _items: Dictionary = {}  # net_id (int) -> Node3D
 
 func _ready() -> void:
@@ -14,10 +9,11 @@ func _ready() -> void:
 func _on_spawned(net_id: int, def_id: int, pos: Vector3) -> void:
 	if _items.has(net_id):
 		return
-	var scene: PackedScene = _ITEM_SCENES.get(def_id)
-	if scene == null:
+	var item_name: String = Protocol.item_name_by_id.get(def_id, "")
+	var prefab: PackedScene = Protocol.get_item_prefab(item_name)
+	if prefab == null:
 		return
-	var node := scene.instantiate() as Node3D
+	var node := prefab.instantiate() as Node3D
 	node.position = pos
 	get_parent().add_child(node)
 	_items[net_id] = node

@@ -1,7 +1,8 @@
 class_name WorldData
 extends RefCounted
 
-const MAGIC        := 0x47574C44  # "GWLD"
+const MAGIC        := 0x47574C44  # "GWLD" - legacy, biome props have no weight
+const MAGIC_W      := 0x47574C32  # "GWL2" - biome props are (path, weight)
 const WorldShaders  = preload("res://world/world_shaders.gd")
 
 # Preloaded so the exporter includes them (paths come from world.bin at runtime)
@@ -23,13 +24,24 @@ var _water_rects    : Array = []
 var _biomes         : Array = []  # [{id, name, material, props[]}]
 var _prop_types     : Array = []
 var _prop_instances : Array = []
-var _holes          : Array = []
+var _biomes_by_id   : Dictionary = {}
+const _PROP_SCATTER_MIN := 16
+const _PROP_SCATTER_MAX := 32
+const _PROP_SCALE_MIN   := 3.0
+const _PROP_SCALE_MAX   := 5.0
+const _PROP_STRETCH     := 0.30
+const _PROP_CELL_JITTER := 0.35
 var _material      : Material
 var _mat_cave      : ShaderMaterial
 var _mat_cave_floor: ShaderMaterial
-var _tree_scene            : PackedScene = null
-var _rock_scene            : PackedScene = null
-var _frozenstarlight_scene : PackedScene = null
+var _fallback_scene        : PackedScene = null
+const _FALLBACK_PATH := "res://assets/fushi.glb"
+# Static object type id -> {mesh, scale_ratio, resource}. Read directly from
+# world.bin's trailing static-type table (written by world_editor's save(),
+# derived from its `object_types` file) — so a new object type needs no code
+# change here at all. Missing/corrupt table (old world.bin) or an id absent
+# from it falls back to _FALLBACK_PATH instead of the wrong mesh/scale.
+var _static_type_defs : Dictionary = {}
 
 
 func load(path: String) -> bool:
@@ -40,7 +52,7 @@ func load(path: String) -> bool:
 
 	var first := f.get_32()
 	var static_offset: int
-	if first == MAGIC:
+	if first == MAGIC or first == MAGIC_W:
 		chunk_cells   = f.get_32()
 		chunks_x      = f.get_32()
 		chunks_z      = f.get_32()
@@ -65,7 +77,8 @@ func load(path: String) -> bool:
 	var stride := chunk_cells + 1
 	var cells  := stride * stride
 
-	var has_biome := (first == MAGIC)
+	var has_biome := (first == MAGIC or first == MAGIC_W)
+	var has_prop_weight := (first == MAGIC_W)
 
 	var types   : Array[int] = []
 	var biomes_ : Array[int] = []
@@ -132,13 +145,20 @@ func load(path: String) -> bool:
 			n = f.get_8(); var bmat  := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
 			var pc    := f.get_8()
 			var bprops: Array[String] = []
+			var bweights: Array[float] = []
 			for _pi in range(pc):
 				n = f.get_8(); bprops.append(f.get_buffer(n).get_string_from_utf8() if n > 0 else "")
+				bweights.append(f.get_float() if has_prop_weight else 1.0)
 			# spawner fields (not used on client — read to advance position)
 			var bst  := f.get_8(); var bsi := f.get_float()
 			var bsm  := f.get_8(); var bsp := f.get_float()
 			_biomes.append({ "id": bid, "name": bname, "material": bmat, "props": bprops,
+				"prop_weights": bweights,
 				"spawn_type": bst, "spawn_interval": bsi, "spawn_max": bsm, "spawn_prob": bsp })
+
+	_biomes_by_id.clear()
+	for b in _biomes:
+		_biomes_by_id[(b as Dictionary)["id"]] = b
 
 	_prop_types.clear()
 	_prop_instances.clear()
@@ -156,22 +176,63 @@ func load(path: String) -> bool:
 				"sx": f.get_float(), "sy": f.get_float(), "sz": f.get_float()
 			})
 
+	# Static-object type table (type_id -> mesh path, scale_ratio) — written by
+	# world_editor's save(), derived from its `object_types` file. Optional
+	# trailing section: absent on world.bin files saved before this existed,
+	# in which case every static object falls back to _fallback_scene below.
+	_static_type_defs.clear()
+	if not f.eof_reached():
+		var stcount := f.get_32()
+		for _sti in range(stcount):
+			var stid        := f.get_8()
+			var n            := f.get_8()
+			var mesh_path    := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
+			var scale_ratio  := f.get_float()
+			_static_type_defs[stid] = { "mesh": mesh_path, "scale_ratio": scale_ratio, "resource": null }
+
 	f.close()
 
-	_holes = _find_holes()
-	_material      = WorldShaders.surface_mat(Color(0.35, 0.52, 0.28), _holes)
+	_stitch_all_borders("h1")
+	_stitch_all_borders("h2")
+	_stitch_all_borders("h3")
+
+	_material      = WorldShaders.surface_mat(Color(0.35, 0.52, 0.28))
 	_mat_cave       = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))
 	_mat_cave_floor = WorldShaders.cave_mat(Color(0.30, 0.20, 0.13))
-	_tree_scene           = load("res://assets/tree01.glb")
-	_rock_scene           = load("res://assets/rock01.glb")
-	_frozenstarlight_scene = load("res://assets/frozenstarlight.glb")
+	_fallback_scene = load(_FALLBACK_PATH)
 	return true
+
+
+func _static_type_resource(id: int) -> Resource:
+	if not _static_type_defs.has(id): return null
+	var def := _static_type_defs[id] as Dictionary
+	if def["resource"] == null:
+		var mesh_path := def["mesh"] as String
+		if mesh_path.is_empty(): return null
+		def["resource"] = load(mesh_path)
+		_static_type_defs[id] = def
+	return def["resource"] as Resource
+
+
+# Meshes (.glb) import as a PackedScene; some assets could import as a bare
+# Mesh instead — handle both without per-type branching.
+func _instantiate_static_type(id: int) -> Node3D:
+	var res := _static_type_resource(id)
+	if res == null: return null
+	if res is PackedScene:
+		return (res as PackedScene).instantiate() as Node3D
+	if res is Mesh:
+		var mi := MeshInstance3D.new()
+		mi.mesh = res as Mesh
+		return mi
+	return null
 
 
 func spawn_into(parent: Node3D) -> void:
 	var ox := world_ox
 	var oz := world_oz
 	var biome_mat_cache: Dictionary = {}
+	var prop_cache: Dictionary = {}
 
 	for i in range(_chunks.size()):
 		var cx := i % chunks_x
@@ -184,32 +245,32 @@ func spawn_into(parent: Node3D) -> void:
 			chunk_mat = _material
 		else:
 			if not biome_mat_cache.has(biome_id):
-				biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _holes, _biomes)
+				biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _biomes)
 			chunk_mat = biome_mat_cache[biome_id] as Material
 
-		parent.add_child(_make_chunk(_chunks[i].h1, origin, chunk_mat))
+		var floor_mi := _make_chunk(_chunks[i].h1, origin, chunk_mat)
+		floor_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+		parent.add_child(floor_mi)
 		if _chunks[i].type == 2:
-			parent.add_child(_make_chunk(_chunks[i].h2, origin, _mat_cave))
-			parent.add_child(_make_chunk(_chunks[i].h3, origin, _mat_cave))
+			var ceil_mi := _make_chunk(_chunks[i].h2, origin, _mat_cave)
+			ceil_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+			parent.add_child(ceil_mi)
+			parent.add_child(_make_chunk(_chunks[i].h3, origin, _mat_cave_floor))
+
+		_scatter_biome_props(biome_id, origin, prop_cache, parent)
 
 	for obj in _static_objects:
 		var wy   := _get_height_at(obj.x, obj.z)
-		var node : Node3D
-		var sc   : float
-		if obj.type == 2:
-			if _frozenstarlight_scene == null: continue
-			node = _frozenstarlight_scene.instantiate() as Node3D
-			sc   = (obj.radius as float) / 1.5
-		elif obj.type == 0:
-			if _tree_scene == null: continue
-			node = _tree_scene.instantiate() as Node3D
-			sc   = (obj.radius as float) / 2.0
+		var id   := obj.type as int
+		var node := _instantiate_static_type(id)
+		var scale_ratio := 1.0
+		if node == null:
+			if _fallback_scene == null: continue
+			node = _fallback_scene.instantiate() as Node3D
 		else:
-			if _rock_scene == null: continue
-			node = _rock_scene.instantiate() as Node3D
-			sc   = (obj.radius as float) / 1.0
+			scale_ratio = (_static_type_defs[id] as Dictionary).get("scale_ratio", 1.0) as float
 		node.position = Vector3(obj.x, wy, obj.z)
-		node.scale    = Vector3.ONE * sc
+		node.scale    = Vector3.ONE * ((obj.radius as float) / scale_ratio)
 		parent.add_child(node)
 
 	var water_mat := WorldShaders.water_mat()
@@ -222,7 +283,6 @@ func spawn_into(parent: Node3D) -> void:
 		mi.position = Vector3(wr.x as float, wr.y as float, wr.z as float)
 		parent.add_child(mi)
 
-	var prop_cache: Dictionary = {}
 	for pi_ in _prop_instances:
 		var pd    := pi_ as Dictionary
 		var tidx  := pd["type_idx"] as int
@@ -239,6 +299,90 @@ func spawn_into(parent: Node3D) -> void:
 		parent.add_child(inst)
 
 
+func _randomize_prop_transform(inst: Node3D) -> void:
+	inst.rotation.y = randf() * TAU
+	var base := randf_range(_PROP_SCALE_MIN, _PROP_SCALE_MAX)
+	var wide := base * randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
+	var tall := base * randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
+	var deep := base * randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
+	inst.scale = Vector3(wide, tall, deep)
+
+
+func _pick_weighted_prop(bprops: Array, bweights: Array) -> String:
+	var total := 0.0
+	for w in bweights:
+		total += w as float
+	if total <= 0.0:
+		return bprops[randi() % bprops.size()] as String
+
+	var roll := randf() * total
+	for i in range(bprops.size()):
+		roll -= bweights[i] as float
+		if roll <= 0.0:
+			return bprops[i] as String
+	return bprops[bprops.size() - 1] as String
+
+
+func _scatter_biome_props(biome_id: int, origin: Vector3, prop_cache: Dictionary, parent: Node3D) -> void:
+	if not _biomes_by_id.has(biome_id):
+		return
+	var biome := _biomes_by_id[biome_id] as Dictionary
+	var bprops: Array = biome.get("props", [])
+	if bprops.is_empty():
+		return
+	var bweights: Array = biome.get("prop_weights", [])
+
+	var chunk_size := chunk_cells * cell_size
+	var count := randi_range(_PROP_SCATTER_MIN, _PROP_SCATTER_MAX)
+
+	# Stratified jittered grid: one prop per cell so placements stay evenly
+	# spread and never land on top of each other, instead of pure random XZ.
+	var cols    := int(ceil(sqrt(float(count))))
+	var rows    := int(ceil(float(count) / float(cols)))
+	var cell_w  := chunk_size / cols
+	var cell_h  := chunk_size / rows
+
+	for idx in range(count):
+		var gx := idx % cols
+		var gz := int(idx / cols)
+
+		var prop_path := _pick_weighted_prop(bprops, bweights)
+		if not prop_cache.has(prop_path):
+			prop_cache[prop_path] = load(prop_path) as PackedScene
+		var sc := prop_cache[prop_path] as PackedScene
+		if sc == null:
+			continue
+
+		var jitter_x := randf_range(-_PROP_CELL_JITTER, _PROP_CELL_JITTER) * cell_w
+		var jitter_z := randf_range(-_PROP_CELL_JITTER, _PROP_CELL_JITTER) * cell_h
+		var wx := origin.x + (gx + 0.5) * cell_w + jitter_x
+		var wz := origin.z + (gz + 0.5) * cell_h + jitter_z
+		var wy := _get_height_at(wx, wz)
+		if is_nan(wy):
+			continue
+
+		var inst := sc.instantiate() as Node3D
+		inst.position = Vector3(wx, wy, wz)
+		_randomize_prop_transform(inst)
+		parent.add_child(inst)
+
+
+func _stitch_all_borders(layer: String) -> void:
+	var stride := chunk_cells + 1
+	for cz in range(chunks_z):
+		for cx in range(chunks_x - 1):
+			var lh: Array = (_chunks[cz * chunks_x + cx] as Dictionary)[layer]
+			var rh: Array = (_chunks[cz * chunks_x + cx + 1] as Dictionary)[layer]
+			if lh.is_empty() or rh.is_empty(): continue
+			for vz in range(stride):
+				rh[vz * stride] = lh[vz * stride + chunk_cells]
+	for cz in range(chunks_z - 1):
+		for cx in range(chunks_x):
+			var th: Array = (_chunks[cz * chunks_x + cx] as Dictionary)[layer]
+			var bh: Array = (_chunks[(cz + 1) * chunks_x + cx] as Dictionary)[layer]
+			if th.is_empty() or bh.is_empty(): continue
+			for vx in range(stride):
+				bh[vx] = th[chunk_cells * stride + vx]
 
 
 func _get_height_at(wx: float, wz: float) -> float:
@@ -307,40 +451,6 @@ func _make_chunk(h1: Array, origin: Vector3, mat: Material, flip_normals: bool =
 	if aabb.size.y < 2.0:
 		mi.custom_aabb = AABB(aabb.position + Vector3(0, -1, 0), aabb.size + Vector3(0, 2, 0))
 	return mi
-
-
-func _find_holes() -> Array:
-	var holes  := []
-	var ox     := world_ox
-	var oz     := world_oz
-	var stride := chunk_cells + 1
-
-	for i in range(_chunks.size()):
-		var cx       := i % chunks_x
-		var cz       := int(i / chunks_x)
-		var chunk_ox := ox + cx * chunk_cells * cell_size
-		var chunk_oz := oz + cz * chunk_cells * cell_size
-		var h: Array = (_chunks[i] as Dictionary)["h1"]
-
-		var nan_pts := PackedVector2Array()
-		for vz in range(stride):
-			for vx in range(stride):
-				if is_nan(h[vz * stride + vx]):
-					nan_pts.append(Vector2(chunk_ox + vx * cell_size, chunk_oz + vz * cell_size))
-
-		if nan_pts.is_empty(): continue
-
-		var center := Vector2.ZERO
-		for p in nan_pts: center += p
-		center /= nan_pts.size()
-
-		var radius := 0.0
-		for p in nan_pts: radius = maxf(radius, center.distance_to(p))
-		radius += cell_size
-
-		holes.append({ "center": center, "radius": radius })
-
-	return holes
 
 
 

@@ -23,8 +23,8 @@ ambient_light_color = Color(0.6, 0.65, 0.8, 1)
 ambient_light_energy = 0.5
 
 [sub_resource type="SphereMesh" id="SphereMesh_h2yge"]
-radius = 180.0
-height = 360.0
+radius = 90.0
+height = 180.0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_h2yge"]
 shading_mode = 0
@@ -51,7 +51,7 @@ script = ExtResource("TerrainScript")
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=909115655]
 
 [node name="Moon" type="MeshInstance3D" parent="." unique_id=450768437]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.025286913, -0.6099664, -0.20190692)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1259.4377, 441.90262, -0.20190692)
 mesh = SubResource("SphereMesh_h2yge")
 surface_material_override/0 = SubResource("StandardMaterial3D_h2yge")
 

@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://die0hbfb0swcn"]
+
+[ext_resource type="PackedScene" uid="uid://bj07l25p0fx5q" path="res://assets/projectiles/Energy01.glb" id="1_j44vi"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_j44vi"]
+emission_enabled = true
+emission = Color(0, 0.47194278, 0.7503443, 1)
+
+[node name="Energy01" unique_id=1384147374 instance=ExtResource("1_j44vi")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0)
+
+[node name="Icosphere" parent="." index="0" unique_id=75094170]
+material_override = SubResource("StandardMaterial3D_j44vi")
+
+[node name="AnimationPlayer" parent="." index="1" unique_id=249698571]
+speed_scale = 7.0
+
+[node name="OmniLight3D" type="OmniLight3D" parent="." index="2" unique_id=491552334]
+light_color = Color(0, 0.8, 1, 1)
+omni_range = 4.0

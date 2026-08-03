@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/ThrowingKnife.glb" id="1"]
+[ext_resource type="Script" path="res://assets/projectiles/projectile.gd" id="2"]
+
+[node name="Dagger" instance=ExtResource("1")]
+transform = Transform3D(0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04, 0, 0, 0)
+script = ExtResource("2")
+random_roll_tumble = true

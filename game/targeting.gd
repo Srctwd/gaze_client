@@ -62,6 +62,28 @@ func _select_target() -> void:
 
 	Network.send(Protocol.pkt_target(chosen))
 
+# Same aim-scoring as pick_aimed_item, but over combat units (_entity_manager.entities)
+# instead of floor items — used for a single shot's target (e.g. the bow), not
+# the persistent tab-target lock (_select_target/pkt_target).
+func pick_aimed_unit() -> int:
+	if GameState.player_net_id == -1:
+		return -1
+	var screen_center := get_viewport().get_visible_rect().size * 0.5
+	var player_pos    := Vector3.ZERO
+	if _entity_manager.entities.has(GameState.player_net_id):
+		player_pos = (_entity_manager.entities[GameState.player_net_id] as StaticBody3D).position
+	var best_id    := -1
+	var best_score := INF
+	for net_id in _entity_manager.entities:
+		if net_id == GameState.player_net_id:
+			continue
+		var body := _entity_manager.entities[net_id] as StaticBody3D
+		var score := _score_candidate(body.position, player_pos, screen_center)
+		if score < best_score:
+			best_score = score
+			best_id    = net_id
+	return best_id
+
 func pick_aimed_item(items: Dictionary) -> int:
 	if GameState.player_net_id == -1 or items.is_empty():
 		return -1

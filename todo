@@ -1,0 +1,176 @@
+Tier 1 – Required before Patreon
+
+These are the things I'd finish before asking people for monthly support.
+
+1. Monster loot ✔
+
+Status: Missing
+
+Right now players can pick up items, but monsters need to reliably reward killing them.
+
+Minimum:
+
+Gold or currency
+Equipment
+Consumables
+Different drop rates
+
+Without loot, combat quickly feels pointless.
+
+2. Safe zone / town
+
+Status: Missing
+
+Players need somewhere to:
+
+Spawn
+Meet each other
+Store items (later)
+Learn talents
+Feel like they're in a world instead of an arena
+
+This doesn't need dozens of NPCs. One small town is enough.
+
+3. Chat
+
+Status: Missing
+
+For an MMORPG, this is almost essential.
+
+At minimum:
+
+Global chat
+Local chat (optional)
+System messages
+
+Even if your game emphasizes immersion, players still need a way to communicate.
+
+Tier 2 – Strongly recommended
+Sound
+
+You don't need an orchestral soundtrack.
+
+Just:
+
+Walking
+Sword hits
+Spell sounds
+Monster sounds
+Ambient music
+
+Sound makes the game feel dramatically more complete.
+
+Better combat feedback
+
+You already have damage numbers.
+
+I'd also add:
+
+Hit flashes
+Death animation
+Screen shake (small)
+Spell particles
+Audio
+A recognizable art style
+
+It doesn't have to be beautiful.
+
+It does need consistency.
+
+People forgive simple graphics.
+
+They don't forgive inconsistent graphics.
+
+Tier 3 – Marketing
+
+This is where Patreon succeeds or fails.
+
+Trailer
+
+One minute.
+
+Show:
+
+Logging in
+Walking through the world
+Fighting
+Learning a talent
+Loot drop
+Boss
+Multiplayer battle
+
+No talking.
+
+No menus.
+
+Just gameplay.
+
+Discord
+
+Absolutely required.
+
+Your Patreon supporters need somewhere to:
+
+Report bugs
+Suggest ideas
+Feel involved
+Monthly updates
+
+Even one post per month is enough.
+
+Consistency matters more than frequency.
+
+Tier 4 – The feature that sells your game
+
+This is the biggest one.
+
+Reading your previous discussions, your project already has ideas that stand out:
+
+No traditional UI
+Discovering talents through exploration
+World-driven progression instead of menu-driven progression
+Trade-off based talents
+Rage preventing magic
+Large numbers of players in the same area
+
+Those shouldn't be hidden.
+
+A visitor should understand your game's identity in the first minute of gameplay or the first 30 seconds of a trailer.
+
+Things I would not delay Patreon for
+
+These can come later.
+
+More maps
+More monsters
+More spells
+More talents
+More equipment
+More biomes
+More quests
+Guilds
+PvP
+Crafting
+Housing
+Trading
+Mounts
+
+People support MMORPGs because they believe in the vision, not because they already contain hundreds of hours of content.
+
+Overall assessment
+
+Based on your checklist, I'd estimate you're around 75–85% of the way to a Patreon-ready alpha.
+
+The biggest remaining gap isn't technical—it's creating a game loop that a new player can immediately enjoy:
+
+Log in.
+Enter a town.
+Talk to other players.
+Leave town.
+Kill monsters.
+Get satisfying loot.
+Equip better gear.
+Become stronger.
+Repeat.
+
+If that loop is fun for even 30–60 minutes, you're in a good position to start building a community and inviting people to support development. Given what you've shared over the past several conversations about your engine and systems, the core technology already seems mature enough that your focus should shift toward polishing the player experience rather than adding more engine features.

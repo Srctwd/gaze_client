@@ -1,6 +1,8 @@
 res://assets/blue_slime_material.tres::084642d271bbe172a508fd8d0d507460::1782303551::res://.godot/exported/133200997/export-7d60175cd99e56dc9b52ca88cd44c35b-blue_slime_material.res
 res://assets/green_slime_material.tres::f68743adc0a957d7267fdaebda70851b::1782303551::res://.godot/exported/133200997/export-a0e181b73ebfbc52e65118e0f4a1ab6b-green_slime_material.res
 res://assets/red_slime_material.tres::6aadb8e8f6ca177b76a1fa50b2bd63e7::1782303551::res://.godot/exported/133200997/export-16afcdef56acd3f9121ba7f770e68a30-red_slime_material.res
-res://main.tscn::9cb9c8db8c72394b5e8af3d97e0a7ec9::1784346958::res://.godot/exported/133200997/export-3070c538c03ee49b7677ff960a3f5195-main.scn
+res://main.tscn::aaa356d46ac63714d8f4011e43abdb5c::1785450743::res://.godot/exported/133200997/export-3070c538c03ee49b7677ff960a3f5195-main.scn
 res://player.tscn::ab9cd01900a03598927dc2541961d7d6::1782303551::res://.godot/exported/133200997/export-36a25e342948d0ceacc500772b5412b3-player.scn
 res://assets/Material.001.tres::3c023956b2da39ab528a8aa4c4218bdf::1782660529::res://.godot/exported/133200997/export-fd05662754c6fafa60770a7dd36523f7-Material.001.res
+res://assets/shaders/flame.tres::2098e1b32ec4f1aefc90c058dfc5d0ce::1785123187::res://.godot/exported/133200997/export-a17b6289caafb8864214ac1de45b7815-flame.res
+res://assets/vfx/flame_particles_3d.tscn::5b9e7ccf6d7a7322cb15306624f2c693::1785123806::res://.godot/exported/133200997/export-2dc71b243e38b356351fe9c8522144d5-flame_particles_3d.scn

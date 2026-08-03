@@ -7,6 +7,13 @@ var _xp_orbs:  Array     = []  # {node: GPUParticles3D, target_id: int}
 var _xp_pmat:  ParticleProcessMaterial
 var _xp_mesh:  SphereMesh
 
+# Every entity's most recent server position/facing — _process() smoothly
+# eases each body toward these instead of snapping, since UNIT_POS arrives at
+# the server's tick rate, not every rendered frame. This includes the local
+# player: player_moved is re-emitted each frame with the eased position, so
+# the camera (camera_controller.gd's follow()) tracks the same smoothing.
+var _targets: Dictionary = {}  # net_id (int) -> {pos: Vector3, rot_y: float}
+
 const _PLAYER_SCENE := preload("res://player.tscn")
 
 var _mesh_by_type:  Dictionary = {}  # unit_type (int) -> PackedScene
@@ -60,8 +67,20 @@ func _on_unit_destroyed(net_id: int) -> void:
 	if entities.has(net_id):
 		entities[net_id].queue_free()
 		entities.erase(net_id)
+		_targets.erase(net_id)
 
 func _process(delta: float) -> void:
+	var t := 1.0 - exp(-GameState.interp_rate * delta)
+	for net_id: int in _targets:
+		var body := entities.get(net_id) as StaticBody3D
+		if body == null:
+			continue
+		var tgt: Dictionary = _targets[net_id]
+		body.position   = body.position.lerp(tgt.pos, t)
+		body.rotation.y = lerp_angle(body.rotation.y, tgt.rot_y, t)
+		if net_id == GameState.player_net_id:
+			player_moved.emit(body.position)
+
 	var i := _xp_orbs.size() - 1
 	while i >= 0:
 		var d: Dictionary = _xp_orbs[i]
@@ -186,17 +205,18 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3) -
 	_apply_variant(body, unit_type, variant)
 
 func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float) -> void:
+	var rot := rot_y + PI
 	if not entities.has(net_id):
 		var body := _make_body(net_id, unit_type, variant)
-		body.position = pos
+		# Snap on first sight — nothing to interpolate from yet, and easing in
+		# from the body's default (0,0,0) would visibly slide it into place.
+		body.position   = pos
+		body.rotation.y = rot
 		get_parent().add_child(body)
 		entities[net_id] = body
 		_apply_variant(body, unit_type, variant)
-	var body := entities[net_id] as StaticBody3D
-	body.position   = pos
-	body.rotation.y = rot_y + PI
-	if net_id == GameState.player_net_id:
-		player_moved.emit(pos)
+
+	_targets[net_id] = {pos = pos, rot_y = rot}
 
 func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 	var body: StaticBody3D

@@ -22,12 +22,6 @@ func _ready() -> void:
 	_hud = load("res://ui/hud.gd").new()
 	add_child(_hud)
 
-	var lamp := OmniLight3D.new()
-	lamp.omni_range    = 24.0
-	lamp.light_energy  = 0.8
-	lamp.omni_attenuation = 2.0
-	add_child(lamp)
-
 	GameState.first_person = first_person
 
 func show_hud() -> void: _hud.show_bars()
