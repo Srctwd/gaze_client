@@ -13,6 +13,8 @@ const _NODE_SIZE  := Vector2(100, 110)  # footprint: icon + name label stacked u
 const _ICON_SIZE  := Vector2(64, 64)
 const _BG_COLOR   := Color(0.0, 0.0, 0.0, 1.0)
 const _STAR_COUNT := 220
+const _ARROW_LEN   := 22.0
+const _ARROW_WIDTH := 16.0
 
 # A talent's icon is res://assets/talent_icons/<key>.png (e.g. Flames ->
 # talent_icons/Flames.png), derived from the talent's own key — drop a
@@ -35,13 +37,21 @@ var _placeholder_icon: Texture2D
 var _row_frac: Dictionary = {}  # node_id -> float (0 = top, 1 = bottom)
 var _col_frac: Dictionary = {}  # node_id -> float (0..1)
 var _centers: Dictionary = {}   # node_id -> Vector2 (local to _tree_area, updated on resize)
-var _edges: Array = []          # Array[Vector2i] of (child_id, parent_id)
+var _edges: Array = []          # Array[Dictionary] of {child, parent, optional}
 
 var _points_available: int = 0
 var _learned: Dictionary = {}  # node_id -> true
 var _close_btn: Button
 var _forced: bool = false          # true while blocking on a mandatory first pick
 var _expect_open: bool = false     # true after we explicitly requested a sync (FrozenStarlight interact)
+
+# Click-drag panning of the tree layout within _tree_area. Tracked at the
+# _input() level (not a Control's gui_input) so dragging keeps working even
+# while the cursor crosses over a talent icon mid-drag — a child Button
+# would otherwise swallow the motion events before _tree_area ever saw them.
+var _pan_offset: Vector2 = Vector2.ZERO
+var _dragging: bool = false
+var _drag_last_mouse: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -110,6 +120,24 @@ func _ready() -> void:
 	Network.talent_synced.connect(_on_talent_synced)
 
 
+# Reads mouse state directly rather than a Control's gui_input, and never
+# calls set_input_as_handled() — talent icon buttons still get every event
+# normally afterward, this just also watches the same events for panning.
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed and _tree_area.get_global_rect().has_point(event.position):
+			_dragging = true
+			_drag_last_mouse = event.position
+		else:
+			_dragging = false
+	elif event is InputEventMouseMotion and _dragging:
+		_pan_offset += event.position - _drag_last_mouse
+		_drag_last_mouse = event.position
+		_reposition()
+
+
 func _generate_stars() -> void:
 	_stars.clear()
 	for i in _STAR_COUNT:
@@ -146,6 +174,9 @@ func _build_tree_area() -> void:
 	_tree_area = Control.new()
 	_tree_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_tree_area.size_flags_vertical   = Control.SIZE_EXPAND_FILL
+	# Panning can push nodes outside this rect — clip them instead of letting
+	# them draw over the title/points label above or description/close button below.
+	_tree_area.clip_contents = true
 	_tree_area.draw.connect(_draw_edges)
 	_tree_area.resized.connect(_reposition)
 
@@ -186,16 +217,24 @@ func _build_tree_area() -> void:
 		var sorted_row := row.duplicate()
 		sorted_row.sort_custom(func(a, b): return desired[a.id] < desired[b.id])
 
-		var min_gap := 1.0 / (row.size() + 1)
-		var prev_col := -INF
-		for t in sorted_row:
-			var col: float = maxf(desired[t.id], prev_col + min_gap)
-			_col_frac[t.id] = col
-			prev_col = col
+		# Minimum column separation between same-tier siblings. Divisor floored
+		# at 8 so a small, tightly-clustered row (e.g. 3-4 nodes all averaging
+		# toward the same spot) doesn't inherit the wide gap meant for evenly-
+		# spread rows — seeding _resolve_columns with too large a min_gap is
+		# what used to drag a whole cluster past column 1.0.
+		var min_gap := 1.0 / maxf(row.size() + 1, 8.0)
+		_resolve_columns(sorted_row, desired, min_gap)
 
 		for t in row:
 			# tier 0 at the bottom (frac 1.0), highest tier at the top (frac 0.0)
 			_row_frac[t.id] = 1.0 if max_tier == 0 else 1.0 - float(t.tier) / max_tier
+			# A position saved from the world_editor talent tree tool
+			# overrides the auto layout — applied now (not before) so later
+			# tiers that average from this node's column converge toward
+			# where it actually ended up, same as an un-overridden node.
+			if t.x != null and t.y != null:
+				_col_frac[t.id] = t.x
+				_row_frac[t.id] = t.y
 
 	_placeholder_icon = _make_placeholder_icon()
 
@@ -241,8 +280,47 @@ func _build_tree_area() -> void:
 
 	_edges.clear()
 	for t in _tree.talents:
-		for parent_id in _tree.prereq_nodes(t.prereq):
-			_edges.append(Vector2i(t.id, parent_id))
+		var edges: Dictionary = _tree.prereq_edges(t.prereq)  # parent_id -> optional
+		for parent_id in edges:
+			_edges.append({"child": t.id, "parent": parent_id, "optional": edges[parent_id]})
+
+
+# Places sorted_row's columns as close as possible to `desired` while
+# enforcing at least min_gap between neighbors — solved as isotonic
+# regression (pool-adjacent-violators) rather than a one-directional greedy
+# sweep. This is the placement that minimizes total displacement from each
+# node's own desired column, and — unlike greedy, which only ever pushes
+# later siblings further right — can't cascade a tight cluster's drift past
+# column 1.0 just because its neighbors also wanted to be nearby.
+func _resolve_columns(sorted_row: Array, desired: Dictionary, min_gap: float) -> void:
+	var n := sorted_row.size()
+	var group_val: Array = []   # pooled value once "de-trended" by i*min_gap
+	var group_size: Array = []
+	var group_members: Array = []  # Array[Array[int]] node ids, in column order
+	for i in n:
+		group_val.append(desired[sorted_row[i].id] - i * min_gap)
+		group_size.append(1)
+		group_members.append([sorted_row[i].id])
+
+	var gi := 0
+	while gi < group_val.size() - 1:
+		if group_val[gi] > group_val[gi + 1]:
+			var total: int = group_size[gi] + group_size[gi + 1]
+			group_val[gi] = (group_val[gi] * group_size[gi] + group_val[gi + 1] * group_size[gi + 1]) / total
+			group_size[gi] = total
+			group_members[gi] += group_members[gi + 1]
+			group_val.remove_at(gi + 1)
+			group_size.remove_at(gi + 1)
+			group_members.remove_at(gi + 1)
+			gi = maxi(gi - 1, 0)
+		else:
+			gi += 1
+
+	var idx := 0
+	for g in group_val.size():
+		for node_id in group_members[g]:
+			_col_frac[node_id] = group_val[g] + idx * min_gap
+			idx += 1
 
 
 func _reposition() -> void:
@@ -250,7 +328,7 @@ func _reposition() -> void:
 	if avail.x < 0 or avail.y < 0:
 		return
 	for node_id in _containers:
-		var top_left := Vector2(_col_frac[node_id] * avail.x, _row_frac[node_id] * avail.y)
+		var top_left := Vector2(_col_frac[node_id] * avail.x, _row_frac[node_id] * avail.y) + _pan_offset
 		_containers[node_id].position = top_left
 		# Edges connect at the icon's center, not the whole container's (which
 		# includes the label below it).
@@ -260,13 +338,30 @@ func _reposition() -> void:
 
 func _draw_edges() -> void:
 	for edge in _edges:
-		var child_id: int = edge.x
-		var parent_id: int = edge.y
+		var child_id: int = edge.child
+		var parent_id: int = edge.parent
 		if not (_centers.has(child_id) and _centers.has(parent_id)):
 			continue
 		var learned := _learned.has(child_id) and _learned.has(parent_id)
 		var color := Color(0.6, 1.0, 0.6) if learned else Color(0.5, 0.5, 0.5)
-		_tree_area.draw_line(_centers[child_id], _centers[parent_id], color, 3.0)
+
+		# Mandatory prereqs arrow forward, prereq -> dependent ("this unlocks
+		# that"); optional prereqs arrow backward, dependent -> prereq ("this
+		# can also use that") — matches how the tree is meant to read.
+		var from: Vector2 = _centers[child_id] if edge.optional else _centers[parent_id]
+		var to: Vector2 = _centers[parent_id] if edge.optional else _centers[child_id]
+		_tree_area.draw_line(from, to, color, 3.0)
+
+		var direction := (to - from).normalized()
+		if direction != Vector2.ZERO:
+			var tip := to - direction * (_ICON_SIZE.y * 0.5 - 6.0)
+			_draw_arrowhead(tip, direction, color)
+
+
+func _draw_arrowhead(tip: Vector2, direction: Vector2, color: Color) -> void:
+	var back := tip - direction * _ARROW_LEN
+	var perp := direction.orthogonal() * (_ARROW_WIDTH * 0.5)
+	_tree_area.draw_colored_polygon([tip, back + perp, back - perp], color)
 
 
 func force_first_pick() -> void:

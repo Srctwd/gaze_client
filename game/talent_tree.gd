@@ -1,18 +1,17 @@
 class_name TalentTree
 extends RefCounted
 
-# Loads and evaluates the talent tree data file (res://talents by default),
-# mirroring the parser in stone_gaze/src/systems/talents.cpp (split_fields +
-# RequiresParser). Pure data/logic — no UI concerns live here.
+# Loads and evaluates the talent tree data file (res://talents.json by
+# default). Pure data/logic — no UI concerns live here.
 #
 # The numeric node id sent over the wire (InteractRequest/TalentSync/
 # LearnTalentRequest) and the bare "key" used in requires expressions both
-# come straight from the data file's id/key columns — this file must be an
-# exact copy of the server's "talents" data file (same ids). Ids are never
+# come straight from the data file's id/key fields — this file must be an
+# exact copy of the server's talent table (same ids). Ids are never
 # reassigned by row order: they're explicit and persisted in the DB
-# (character_talents.node_id), so reordering/removing a row can't corrupt
+# (character_talents.node_id), so reordering/removing an entry can't corrupt
 # existing characters' learned talents.
-const DEFAULT_PATH := "res://talents"
+const DEFAULT_PATH := "res://talents.json"
 
 # Each entry: { id, key, name, tier, tags: Array[String], prereq: Requirement dict, description }
 # Requirement dict shapes:
@@ -33,36 +32,35 @@ func load(path: String = DEFAULT_PATH) -> bool:
 		push_error("TalentTree: failed to open " + path)
 		return false
 
-	var rows: Array = []  # Array of field-arrays, in file order
-	while not f.eof_reached():
-		var line := f.get_line()
-		if line.is_empty() or line.begins_with("#"):
-			continue
-		var fields := _split_fields(line)
-		if fields.size() < 9:
-			continue
-		rows.append(fields)
+	var rows = JSON.parse_string(f.get_as_text())
+	if typeof(rows) != TYPE_ARRAY:
+		push_error("TalentTree: " + path + " is not a JSON array")
+		return false
 
-	# First pass: collect id/key pairs so the requires-expression parser
-	# (second pass) can resolve references regardless of declaration order.
+	# First pass: collect id/key pairs so the requires-tree parser (second
+	# pass) can resolve references regardless of declaration order.
 	var key_to_id: Dictionary = {}
-	for fields in rows:
-		key_to_id[fields[1]] = int(fields[0])
+	for row: Dictionary in rows:
+		key_to_id[row.key] = int(row.id)
 
-	for fields in rows:
-		var node_id: int = int(fields[0])
-		var tags: Array = [] if fields[4] == "-" else fields[4].split(",")
-		var effects: Array = [] if fields[7] == "-" else fields[7].split(",")
+	for row: Dictionary in rows:
+		var node_id: int = int(row.id)
 		var talent := {
 			"id": node_id,
-			"key": fields[1],
-			"name": fields[2],
-			"tier": int(fields[3]),
-			"tags": tags,
-			"prereq": _RequiresParser.new(fields[5], key_to_id).parse(),
-			"bonus": fields[6],    # raw "stat<op>value,..." string — gameplay is server-authoritative
-			"effects": effects,
-			"description": fields[8],
+			"key": row.key,
+			"name": row.name,
+			"tier": int(row.tier),
+			"tags": row.get("tags", []),
+			"prereq": _parse_requires(row.get("requires"), key_to_id),
+			"bonus": row.get("bonus", []),      # Array of {stat, op, value} — gameplay is server-authoritative
+			"effects": row.get("effects", []),
+			"description": row.get("description", ""),
+			# Normalized 0..1 canvas position, set by dragging a node in the
+			# world_editor talent tree tool — null if never manually placed,
+			# in which case talent_tree_ui.gd falls back to its own
+			# tier/prereq-based auto layout.
+			"x": row.get("x"),
+			"y": row.get("y"),
 		}
 		talents.append(talent)
 		by_id[node_id] = talent
@@ -70,86 +68,39 @@ func load(path: String = DEFAULT_PATH) -> bool:
 	return true
 
 
-func _split_fields(line: String) -> Array:
-	var fields: Array = []
-	var i := 0
-	var n := line.length()
-	while i < n:
-		while i < n and line[i] == " ":
-			i += 1
-		if i >= n:
-			break
-		if line[i] == "\"":
-			var end := line.find("\"", i + 1)
-			if end == -1:
-				end = n
-			fields.append(line.substr(i + 1, end - i - 1))
-			i = end + 1
-		else:
-			var start := i
-			while i < n and line[i] != " ":
-				i += 1
-			fields.append(line.substr(start, i - start))
-	return fields
+# Converts a "requires" JSON node into the same Requirement-dict shape
+# requirement_met()/prereq_nodes() evaluate:
+#   null                                  -> {"type": "none"}
+#   "SomeKey"                             -> {"type": "has", "node": id}
+#   {"and": [...]} / {"or": [...]}        -> {"type": "and"/"or", "children": [...]}
+#   {"sum": {"group": g, "threshold": n}} -> {"type": "sum", "group": g, "threshold": n}
+func _parse_requires(node, key_to_id: Dictionary) -> Dictionary:
+	if node == null:
+		return { "type": "none" }
 
-
-# Recursive-descent parser for the "requires" expression column, mirroring
-# stone_gaze's RequiresParser (and/or/parens/sum(group,N)).
-class _RequiresParser:
-	var s: String
-	var pos: int = 0
-	var key_to_id: Dictionary
-
-	func _init(expr: String, keys: Dictionary) -> void:
-		s = expr
-		key_to_id = keys
-
-	func parse() -> Dictionary:
-		if s.is_empty() or s == "-":
+	if node is String:
+		if not key_to_id.has(node):
+			push_error("TalentTree: unknown talent key '" + node + "' in requires")
 			return { "type": "none" }
-		return _parse_or()
+		return { "type": "has", "node": key_to_id[node] }
 
-	func _peek() -> String:
-		return s[pos] if pos < s.length() else ""
+	if node is Dictionary:
+		if node.has("and"):
+			var children: Array = []
+			for c in node["and"]:
+				children.append(_parse_requires(c, key_to_id))
+			return { "type": "and", "children": children }
+		if node.has("or"):
+			var children: Array = []
+			for c in node["or"]:
+				children.append(_parse_requires(c, key_to_id))
+			return { "type": "or", "children": children }
+		if node.has("sum"):
+			var s: Dictionary = node["sum"]
+			return { "type": "sum", "group": s.group, "threshold": int(s.threshold) }
 
-	func _parse_or() -> Dictionary:
-		var children: Array = [_parse_and()]
-		while _peek() == "|":
-			pos += 1
-			children.append(_parse_and())
-		return children[0] if children.size() == 1 else { "type": "or", "children": children }
-
-	func _parse_and() -> Dictionary:
-		var children: Array = [_parse_atom()]
-		while _peek() == "&":
-			pos += 1
-			children.append(_parse_atom())
-		return children[0] if children.size() == 1 else { "type": "and", "children": children }
-
-	func _parse_atom() -> Dictionary:
-		if _peek() == "(":
-			pos += 1
-			var r := _parse_or()
-			if _peek() == ")":
-				pos += 1
-			return r
-
-		var start := pos
-		while pos < s.length() and not (s[pos] in ["&", "|", "(", ")"]):
-			pos += 1
-		var token := s.substr(start, pos - start)
-
-		if token.begins_with("sum(") and token.ends_with(")"):
-			var inner := token.substr(4, token.length() - 5)
-			var comma := inner.rfind(",")
-			var group := inner.substr(0, comma)
-			var threshold := int(inner.substr(comma + 1))
-			return { "type": "sum", "group": group, "threshold": threshold }
-
-		if not key_to_id.has(token):
-			push_error("TalentTree: unknown talent key '" + token + "' in requires expression")
-			return { "type": "none" }
-		return { "type": "has", "node": key_to_id[token] }
+	push_error("TalentTree: malformed requires node: " + str(node))
+	return { "type": "none" }
 
 
 # All node ids referenced anywhere in a requirement tree (dedup'd) — useful
@@ -166,6 +117,29 @@ func _collect_prereq_nodes(req: Dictionary, seen: Dictionary) -> void:
 		"and", "or":
 			for c in req.children:
 				_collect_prereq_nodes(c, seen)
+
+
+# Same node set as prereq_nodes(), but tagged with whether each is strictly
+# required or just one of several alternatives — drives arrow direction in
+# the tree UI: a node reachable only through "and" ancestors is mandatory
+# (arrow prereq -> dependent, "this unlocks that"); a node reachable through
+# any "or" ancestor is optional (arrow dependent -> prereq, "this can also
+# use that"), even if that same "or" branch is itself an "and" of two nodes.
+func prereq_edges(req: Dictionary) -> Dictionary:
+	var result: Dictionary = {}  # node_id -> bool (true = optional)
+	_collect_prereq_edges(req, false, result)
+	return result
+
+func _collect_prereq_edges(req: Dictionary, under_or: bool, result: Dictionary) -> void:
+	match req.type:
+		"has":
+			result[req.node] = result.get(req.node, true) and under_or
+		"and":
+			for c in req.children:
+				_collect_prereq_edges(c, under_or, result)
+		"or":
+			for c in req.children:
+				_collect_prereq_edges(c, true, result)
 
 
 func requirement_met(req: Dictionary, learned: Dictionary) -> bool:

@@ -2,14 +2,14 @@
 
 [ext_resource type="PackedScene" uid="uid://qf1w0atbtlhj" path="res://assets/items/torch01.glb" id="1_g8p30"]
 [ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="1_iahd2"]
-[ext_resource type="Texture2D" uid="uid://c6fm8xqae3jpc" path="res://assets/Flames.png" id="2_iahd2"]
+[ext_resource type="Texture2D" uid="uid://b5bwnp2l3mgvl" path="res://assets/particles/flame_particle_pixel01.png" id="3_iahd2"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tyv0i"]
 transparency = 1
 shading_mode = 0
 vertex_color_use_as_albedo = true
-albedo_color = Color(0.49747366, 0.49747366, 0.49747366, 1)
-albedo_texture = ExtResource("2_iahd2")
+albedo_color = Color(1, 0.1764706, 0, 1)
+albedo_texture = ExtResource("3_iahd2")
 billboard_mode = 1
 billboard_keep_scale = true
 
@@ -20,12 +20,19 @@ point_count = 1
 [sub_resource type="CurveTexture" id="CurveTexture_tyv0i"]
 curve = SubResource("Curve_iahd2")
 
-[sub_resource type="Gradient" id="Gradient_tyv0i"]
-offsets = PackedFloat32Array(0, 0.6639344)
-colors = PackedColorArray(0.67063165, 0.67063165, 0.6706316, 1, 0, 0, 0, 1)
+[sub_resource type="Gradient" id="Gradient_iahd2"]
+offsets = PackedFloat32Array(0, 0.8196721)
+colors = PackedColorArray(0.27450982, 0.27450982, 0.27450982, 1, 0, 0, 0, 1)
 
-[sub_resource type="GradientTexture1D" id="GradientTexture1D_nu0uf"]
-gradient = SubResource("Gradient_tyv0i")
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_tyv0i"]
+gradient = SubResource("Gradient_iahd2")
+
+[sub_resource type="Curve" id="Curve_tyv0i"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.8539326), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_nu0uf"]
+curve = SubResource("Curve_tyv0i")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_nu0uf"]
 emission_shape = 1
@@ -33,7 +40,8 @@ emission_sphere_radius = 0.3
 gravity = Vector3(0, 3, 0)
 scale_min = 0.5
 scale_max = 0.7
-color_ramp = SubResource("GradientTexture1D_nu0uf")
+scale_curve = SubResource("CurveTexture_nu0uf")
+color_ramp = SubResource("GradientTexture1D_tyv0i")
 alpha_curve = SubResource("CurveTexture_tyv0i")
 
 [sub_resource type="QuadMesh" id="QuadMesh_6yvt0"]
@@ -46,13 +54,14 @@ grip_point = NodePath("Marker3D")
 [node name="torch01" parent="." unique_id=1152962316 instance=ExtResource("1_g8p30")]
 
 [node name="Marker3D" type="Marker3D" parent="." unique_id=2109476962]
-transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, 3.5527137e-15, 0, -3.5527137e-15, 0.99999976, 0, 1.5614529, -1.5390206e-08)
+transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -1.0658141e-14, 0, 1.0658141e-14, 0.99999976, 0, 4.251562, 1.02198236e-07)
 
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." unique_id=1448723297]
-transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.4868996e-14, 0, 2.4868996e-14, 0.99999976, 0, 5.6334305, -8.295501e-09)
+transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.842171e-14, 0, 2.842171e-14, 0.99999976, 0, 5.588713, -1.0250119e-08)
 material_override = SubResource("StandardMaterial3D_tyv0i")
-amount = 24
-lifetime = 0.3
+amount = 32
+lifetime = 0.5
+fixed_fps = 60
 process_material = SubResource("ParticleProcessMaterial_nu0uf")
 draw_pass_1 = SubResource("QuadMesh_6yvt0")
 

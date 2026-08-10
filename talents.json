@@ -1,0 +1,678 @@
+[
+  {
+    "bonus": [],
+    "description": "Foundational arcane study required by most arcane talents.\nTeaches a basic arcane spell.",
+    "effects": [],
+    "id": 0,
+    "key": "ArcaneKnowledge",
+    "name": "Arcane Knowledge",
+    "requires": null,
+    "tags": [
+      "magic",
+      "arcane"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [],
+    "description": "Foundational fire study required by most fire talents.\nTeaches a basic fire spell.",
+    "effects": [],
+    "id": 1,
+    "key": "FireKnowledge",
+    "name": "Fire Knowledge",
+    "requires": null,
+    "tags": [
+      "magic",
+      "fire"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [],
+    "description": "Foundational frost study required by most frost talents.\nTeaches a basic frost spell.",
+    "effects": [],
+    "id": 2,
+    "key": "FrostKnowledge",
+    "name": "Frost Knowledge",
+    "requires": null,
+    "tags": [
+      "magic",
+      "frost"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [],
+    "description": "Further enchances flame knowledge.",
+    "effects": [],
+    "id": 3,
+    "key": "Flames",
+    "name": "Flames",
+    "requires": "FireKnowledge",
+    "tags": [
+      "magic",
+      "fire"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [],
+    "description": "Fire spells last longer.",
+    "effects": [],
+    "id": 4,
+    "key": "SlowCombustion",
+    "name": "Slow Combustion",
+    "requires": {
+      "and": [
+        "FireKnowledge"
+      ]
+    },
+    "tags": [
+      "magic",
+      "fire",
+      "arcane"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [],
+    "description": "Releases a burst of raw arcane energy.",
+    "effects": [],
+    "id": 5,
+    "key": "ArcaneBurst",
+    "name": "Arcane Burst",
+    "requires": {
+      "and": [
+        {
+          "or": [
+            "FireKnowledge",
+            "FrostKnowledge"
+          ]
+        },
+        "ArcaneKnowledge"
+      ]
+    },
+    "tags": [
+      "magic",
+      "arcane"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "weapon_damage",
+        "value": 2.0
+      },
+      {
+        "op": "*",
+        "stat": "weapon_damage",
+        "value": 1.07
+      }
+    ],
+    "description": "Generaly improves combat.",
+    "effects": [],
+    "id": 6,
+    "key": "BasicTraining",
+    "name": "Basic Training",
+    "requires": null,
+    "tags": [
+      "weapon"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "distance_range",
+        "value": 2.0
+      }
+    ],
+    "description": "Improves distance proficiency.",
+    "effects": [],
+    "id": 7,
+    "key": "DistanceTraining",
+    "name": "Distance Training",
+    "requires": "BasicTraining",
+    "tags": [
+      "weapon",
+      "bow",
+      "distance"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [],
+    "description": "Improves distance fighting with magic.",
+    "effects": [],
+    "id": 8,
+    "key": "ArcaneMarksmanship",
+    "name": "Arcane Marksmanship",
+    "requires": {
+      "and": [
+        "DistanceTraining",
+        "ArcaneKnowledge"
+      ]
+    },
+    "tags": [
+      "weapon",
+      "bow",
+      "arcane"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [],
+    "description": "Launches a bolt of frost that chills the target.",
+    "effects": [],
+    "id": 9,
+    "key": "FrostBolt",
+    "name": "Frost Bolt",
+    "requires": "FrostKnowledge",
+    "tags": [
+      "magic",
+      "frost"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [],
+    "description": "Chilled enemies take increased damage from your attacks.",
+    "effects": [
+      "Frostbite"
+    ],
+    "id": 10,
+    "key": "Frostbite",
+    "name": "Frostbite",
+    "requires": "FrostKnowledge",
+    "tags": [
+      "magic",
+      "frost"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [],
+    "description": "Releases a burst of frost, damaging and slowing nearby enemies.",
+    "effects": [],
+    "id": 11,
+    "key": "FrostNova",
+    "name": "Frost Nova",
+    "requires": {
+      "and": [
+        "FrostKnowledge",
+        "ArcaneKnowledge"
+      ]
+    },
+    "tags": [
+      "magic",
+      "frost",
+      "arcane"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "weapon_damage",
+        "value": 5.0
+      },
+      {
+        "op": "*",
+        "stat": "weapon_damage",
+        "value": 1.05
+      }
+    ],
+    "description": "Further improves weapon proficiency.",
+    "effects": [],
+    "id": 12,
+    "key": "WeaponMastery",
+    "name": "Weapon Mastery",
+    "requires": "BasicTraining",
+    "tags": [
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "bow_damage",
+        "value": 3.0
+      }
+    ],
+    "description": "Your bow shots strike with additional force.",
+    "effects": [],
+    "id": 13,
+    "key": "PowerShots",
+    "name": "Power Shots",
+    "requires": "DistanceTraining",
+    "tags": [
+      "weapon",
+      "bow"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "*",
+        "stat": "weapon_damage",
+        "value": 1.1
+      }
+    ],
+    "description": "Mastery of both blade and arcane arts.",
+    "effects": [],
+    "id": 14,
+    "key": "GrandMastery",
+    "name": "Grand Mastery",
+    "requires": {
+      "and": [
+        "WeaponMastery"
+      ]
+    },
+    "tags": [
+      "weapon",
+      "arcane"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [],
+    "description": "Channels mastery over fire, frost, and arcane into raw power.",
+    "effects": [
+      "Elemental"
+    ],
+    "id": 15,
+    "key": "ElementalMastery",
+    "name": "Elemental Mastery",
+    "requires": {
+      "or": [
+        {
+          "and": [
+            "FireKnowledge",
+            "FrostKnowledge"
+          ]
+        },
+        {
+          "and": [
+            "FrostKnowledge",
+            "LightningKnowledge"
+          ]
+        },
+        {
+          "and": [
+            "FireKnowledge",
+            "LightningKnowledge"
+          ]
+        }
+      ]
+    },
+    "tags": [
+      "magic",
+      "arcane"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [],
+    "description": "Foundational study of the void required by most void talents.",
+    "effects": [],
+    "id": 16,
+    "key": "VoidKnowledge",
+    "name": "Void Knowledge",
+    "requires": null,
+    "tags": [
+      "magic",
+      "void",
+      "shadow"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [],
+    "description": "Launches a bolt of void energy that damages the target's mana instead of their health.",
+    "effects": [
+      "VoidDamage"
+    ],
+    "id": 17,
+    "key": "VoidBolt",
+    "name": "Void Bolt",
+    "requires": "VoidKnowledge",
+    "tags": [
+      "magic",
+      "void"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [],
+    "description": "Your spells burn the target's mana, dealing damage to their mana pool alongside normal damage.",
+    "effects": [
+      "ManaBurn"
+    ],
+    "id": 18,
+    "key": "ManaBurn",
+    "name": "Mana Burn",
+    "requires": {
+      "and": [
+        "VoidKnowledge"
+      ]
+    },
+    "tags": [
+      "magic",
+      "void",
+      "arcane"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [],
+    "description": "Detonates residual void energy within the target, dealing heavy mana damage and converting a portion of it into health damage.",
+    "effects": [
+      "VoidCollapse"
+    ],
+    "id": 19,
+    "key": "VoidCollapse",
+    "name": "Void Collapse",
+    "requires": {
+      "and": [
+        "VoidBolt",
+        "ManaBurn"
+      ]
+    },
+    "tags": [
+      "magic",
+      "void",
+      "arcane"
+    ],
+    "tier": 4
+  },
+  {
+    "bonus": [],
+    "description": "Prevents the target from casting spells for a short duration.",
+    "effects": [
+      "Silence"
+    ],
+    "id": 21,
+    "key": "Silence",
+    "name": "Silence",
+    "requires": "VoidKnowledge",
+    "tags": [
+      "magic",
+      "shadow"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [],
+    "description": "Afflicts the target with a curse, reducing the damage they deal.",
+    "effects": [
+      "Curse"
+    ],
+    "id": 22,
+    "key": "Curse",
+    "name": "Curse",
+    "requires": "VoidKnowledge",
+    "tags": [
+      "magic",
+      "shadow"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [],
+    "description": "Silences enemies within a large radius simultaneously.",
+    "effects": [
+      "VastSilence"
+    ],
+    "id": 23,
+    "key": "GlobalSilence",
+    "name": "Vast Silence",
+    "requires": {
+      "and": [
+        "Silence",
+        "Curse"
+      ]
+    },
+    "tags": [
+      "magic",
+      "shadow"
+    ],
+    "tier": 5
+  },
+  {
+    "bonus": [],
+    "description": "Foundational training in stealth and cunning. Required by most thief talents.",
+    "effects": [],
+    "id": 24,
+    "key": "LightFingers",
+    "name": "Light Fingers",
+    "requires": null,
+    "tags": [
+      "thief"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [],
+    "description": "Grants a chance to steal an item from your target when you land a hit.",
+    "effects": [
+      "Steal"
+    ],
+    "id": 25,
+    "key": "Steal",
+    "name": "Steal",
+    "requires": "LightFingers",
+    "tags": [
+      "thief"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "weapon_damage",
+        "value": 4.0
+      }
+    ],
+    "description": "Attacks from behind deal additional damage.",
+    "effects": [],
+    "id": 26,
+    "key": "Backstab",
+    "name": "Backstab",
+    "requires": "LightFingers",
+    "tags": [
+      "thief",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [],
+    "description": "Coats your weapons with deadly poison.",
+    "effects": [
+      "Poison"
+    ],
+    "id": 27,
+    "key": "Poison",
+    "name": "Poison",
+    "requires": "LightFingers",
+    "tags": [
+      "thief",
+      "poison"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [],
+    "description": "Massively increases the odds and value of items you steal.",
+    "effects": [
+      "GrandTheft"
+    ],
+    "id": 28,
+    "key": "GrandTheft",
+    "name": "Grand Theft",
+    "requires": {
+      "and": [
+        "Steal",
+        "Backstab"
+      ]
+    },
+    "tags": [
+      "thief"
+    ],
+    "tier": 5
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "weapon_damage",
+        "value": 3.0
+      }
+    ],
+    "description": "Specialized training with sword-type weapons increases your damage with them.",
+    "effects": [
+      "SwordSpecialization"
+    ],
+    "id": 29,
+    "key": "SwordSpecialization",
+    "name": "Sword Specialization",
+    "requires": "BasicTraining",
+    "tags": [
+      "weapon",
+      "sword"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "weapon_damage",
+        "value": 3.0
+      }
+    ],
+    "description": "Trains you to fight effectively with a weapon in each hand.",
+    "effects": [
+      "DualWield"
+    ],
+    "id": 30,
+    "key": "DualWield",
+    "name": "Dual Wield",
+    "requires": "WeaponMastery",
+    "tags": [
+      "weapon"
+    ],
+    "tier": 5
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "weapon_damage",
+        "value": 5.0
+      }
+    ],
+    "description": "You grip a two-handed weapon in each hand, unleashing devastating dual-wielded blows too heavy for lesser warriors to manage.",
+    "effects": [
+      "TitansGrip"
+    ],
+    "id": 31,
+    "key": "TitansGrip",
+    "name": "Titan's Grip",
+    "requires": {
+      "and": [
+        "DualWield",
+        "WeaponMastery",
+        {
+          "stat": {
+            "at_least": 15.0,
+            "name": "strength"
+          }
+        }
+      ]
+    },
+    "tags": [
+      "weapon"
+    ],
+    "tier": 7,
+    "x": 0.606481481248651,
+    "y": 0.0
+  },
+  {
+    "bonus": [
+      {
+        "op": "*",
+        "stat": "weapon_damage",
+        "value": 1.2
+      }
+    ],
+    "description": "Enter a battle rage: you can no longer cast spells, use items, or be affected by mind-altering effects, and you take increased damage — but your attack speed and damage rise sharply.",
+    "effects": [
+      "Rage"
+    ],
+    "id": 32,
+    "key": "Rage",
+    "name": "Rage",
+    "requires": "WeaponMastery",
+    "tags": [
+      "warrior"
+    ],
+    "tier": 6,
+    "x": 0.666217711659286,
+    "y": 0.145619573903137
+  },
+  {
+    "bonus": [],
+    "description": "Enter a deep focus: you can no longer attack, use items, or be affected by mind-altering effects, and you take increased damage — but your skills cost less mana, and damage taken drains mana before it drains health.",
+    "effects": [
+      "Focus"
+    ],
+    "id": 33,
+    "key": "Focus",
+    "name": "Focus",
+    "requires": "ArcaneKnowledge",
+    "tags": [
+      "magic"
+    ],
+    "tier": 6
+  },
+  {
+    "bonus": [],
+    "description": "Trains you to use a shield effectively, increasing your armor and granting a chance to block incoming attacks.",
+    "effects": [
+      "Block"
+    ],
+    "id": 34,
+    "key": "ShieldTraining",
+    "name": "Shield Training",
+    "requires": "BasicTraining",
+    "tags": [
+      "weapon",
+      "shield",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [],
+    "description": "Foundational lightning study. Required by most frost talents.",
+    "effects": [],
+    "id": 35,
+    "key": "LightningKnowledge",
+    "name": "Lightning Knowledge",
+    "requires": null,
+    "tags": [
+      "lightning",
+      "magic"
+    ],
+    "tier": 1
+  }
+]
