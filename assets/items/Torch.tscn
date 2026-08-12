@@ -54,7 +54,7 @@ grip_point = NodePath("Marker3D")
 [node name="torch01" parent="." unique_id=1152962316 instance=ExtResource("1_g8p30")]
 
 [node name="Marker3D" type="Marker3D" parent="." unique_id=2109476962]
-transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -1.0658141e-14, 0, 1.0658141e-14, 0.99999976, 0, 4.251562, 1.02198236e-07)
+transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -1.7763568e-14, 0, 1.7763568e-14, 0.99999976, 0, 3.1508648, 5.408524e-08)
 
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." unique_id=1448723297]
 transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.842171e-14, 0, 2.842171e-14, 0.99999976, 0, 5.588713, -1.0250119e-08)

@@ -3,6 +3,7 @@ extends RefCounted
 
 const MAGIC        := 0x47574C44  # "GWLD" - legacy, biome props have no weight
 const MAGIC_W      := 0x47574C32  # "GWL2" - biome props are (path, weight)
+const MAGIC_B      := 0x47574C33  # "GWL3" - adds a box-collider section (OBB walls)
 const WorldShaders  = preload("res://world/world_shaders.gd")
 
 # Preloaded so the exporter includes them (paths come from world.bin at runtime)
@@ -20,6 +21,7 @@ var world_ox    : float = 0.0
 var world_oz    : float = 0.0
 var _chunks     : Array = []
 var _static_objects : Array = []
+var _static_boxes   : Array = []  # OBB walls: {type, x, z, half_x, half_z, rot_y, height, y_offset}
 var _water_rects    : Array = []
 var _biomes         : Array = []  # [{id, name, material, props[]}]
 var _prop_types     : Array = []
@@ -36,6 +38,14 @@ var _mat_cave      : ShaderMaterial
 var _mat_cave_floor: ShaderMaterial
 var _fallback_scene        : PackedScene = null
 const _FALLBACK_PATH := "res://assets/fushi.glb"
+# Wall type id -> ShaderMaterial, built from wall_types.json (id, name, texture
+# path) rather than world.bin's own trailing wall-type table — that table is
+# written by the same in-progress tool producing world.bin's box section and
+# isn't reliable yet (e.g. every id currently points at the same texture in
+# the file, while wall_types.json already distinguishes them correctly).
+const _WALL_TYPES_PATH := "res://wall_types.json"
+var _wall_mats        : Dictionary = {}
+var _wall_mat_default : ShaderMaterial
 # Static object type id -> {mesh, scale_ratio, resource}. Read directly from
 # world.bin's trailing static-type table (written by world_editor's save(),
 # derived from its `object_types` file) — so a new object type needs no code
@@ -52,7 +62,8 @@ func load(path: String) -> bool:
 
 	var first := f.get_32()
 	var static_offset: int
-	if first == MAGIC or first == MAGIC_W:
+	var box_offset: int = 0
+	if first == MAGIC or first == MAGIC_W or first == MAGIC_B:
 		chunk_cells   = f.get_32()
 		chunks_x      = f.get_32()
 		chunks_z      = f.get_32()
@@ -62,6 +73,8 @@ func load(path: String) -> bool:
 		static_offset = f.get_32()
 		origin_cx = raw_ocx if raw_ocx < 0x80000000 else int(raw_ocx) - 0x100000000
 		origin_cz = raw_ocz if raw_ocz < 0x80000000 else int(raw_ocz) - 0x100000000
+		if first == MAGIC_B:
+			box_offset = f.get_32()
 	else:
 		chunk_cells   = first
 		chunks_x      = f.get_32()
@@ -77,8 +90,9 @@ func load(path: String) -> bool:
 	var stride := chunk_cells + 1
 	var cells  := stride * stride
 
-	var has_biome := (first == MAGIC or first == MAGIC_W)
-	var has_prop_weight := (first == MAGIC_W)
+	var has_biome := (first == MAGIC or first == MAGIC_W or first == MAGIC_B)
+	var has_prop_weight := (first == MAGIC_W or first == MAGIC_B)
+	var has_boxes := (first == MAGIC_B)
 
 	var types   : Array[int] = []
 	var biomes_ : Array[int] = []
@@ -127,8 +141,16 @@ func load(path: String) -> bool:
 		var height := f.get_float()
 		_static_objects.append({ "type": type, "x": ox_, "z": oz_, "radius": radius, "height": height })
 
+	# Each of the sections below is optional/trailing and was historically read
+	# with a plain eof_reached() check — that alone breaks once has_boxes is
+	# true, since the file doesn't end after the last trailing section anymore:
+	# it ends after the box section, appended past all of these. Without also
+	# checking against box_offset, a missing table (e.g. no static-type-defs
+	# on this file) gets misread from the box section's own leading bytes
+	# instead of being skipped, corrupting _static_type_defs and sending every
+	# static object down the _fallback_scene path.
 	_water_rects.clear()
-	if not f.eof_reached():
+	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
 		var wcount := f.get_32()
 		for _i in range(wcount):
 			_water_rects.append({
@@ -137,7 +159,7 @@ func load(path: String) -> bool:
 			})
 
 	_biomes.clear()
-	if not f.eof_reached():
+	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
 		var bcount := f.get_8()
 		for _bi in range(bcount):
 			var bid   := f.get_8()
@@ -162,11 +184,11 @@ func load(path: String) -> bool:
 
 	_prop_types.clear()
 	_prop_instances.clear()
-	if not f.eof_reached():
+	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
 		var ptcount := f.get_8()
 		for _pti in range(ptcount):
 			var pn := f.get_8(); _prop_types.append(f.get_buffer(pn).get_string_from_utf8() if pn > 0 else "")
-	if not f.eof_reached():
+	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
 		var picount := f.get_32()
 		for _pii in range(picount):
 			_prop_instances.append({
@@ -181,7 +203,7 @@ func load(path: String) -> bool:
 	# trailing section: absent on world.bin files saved before this existed,
 	# in which case every static object falls back to _fallback_scene below.
 	_static_type_defs.clear()
-	if not f.eof_reached():
+	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
 		var stcount := f.get_32()
 		for _sti in range(stcount):
 			var stid        := f.get_8()
@@ -189,6 +211,27 @@ func load(path: String) -> bool:
 			var mesh_path    := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
 			var scale_ratio  := f.get_float()
 			_static_type_defs[stid] = { "mesh": mesh_path, "scale_ratio": scale_ratio, "resource": null }
+
+	# Box-collider (OBB wall) section — appended at the very end of the file,
+	# after every other trailing section, so it's read via an explicit seek
+	# rather than sequentially; reading it any earlier would leave the cursor
+	# at EOF and silently skip everything that comes after it above.
+	_static_boxes.clear()
+	if has_boxes:
+		f.seek(box_offset)
+		var box_count := f.get_32()
+		for _i in range(box_count):
+			var btype    := f.get_8()
+			var bx       := f.get_float()
+			var bz       := f.get_float()
+			var bhalf_x  := f.get_float()
+			var bhalf_z  := f.get_float()
+			var brot_y   := f.get_float()
+			var bheight  := f.get_float()
+			var byoffset := f.get_float()
+			_static_boxes.append({ "type": btype, "x": bx, "z": bz,
+				"half_x": bhalf_x, "half_z": bhalf_z, "rot_y": brot_y, "height": bheight,
+				"y_offset": byoffset })
 
 	f.close()
 
@@ -200,7 +243,31 @@ func load(path: String) -> bool:
 	_mat_cave       = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))
 	_mat_cave_floor = WorldShaders.cave_mat(Color(0.30, 0.20, 0.13))
 	_fallback_scene = load(_FALLBACK_PATH)
+	_load_wall_types()
 	return true
+
+
+func _load_wall_types() -> void:
+	_wall_mats.clear()
+	_wall_mat_default = WorldShaders.wall_mat()
+	var wf := FileAccess.open(_WALL_TYPES_PATH, FileAccess.READ)
+	if wf == null:
+		push_error("WorldData: cannot open " + _WALL_TYPES_PATH)
+		return
+	var rows = JSON.parse_string(wf.get_as_text())
+	if typeof(rows) != TYPE_ARRAY:
+		push_error("WorldData: " + _WALL_TYPES_PATH + " is not a JSON array")
+		return
+	for row: Dictionary in rows:
+		var wid  := int(row.get("id", 0))
+		var path := row.get("texture", "") as String
+		if path.is_empty():
+			continue
+		var tex := load(path) as Texture2D
+		if tex == null:
+			push_error("WorldData: wall type %d texture failed to load: %s" % [wid, path])
+			continue
+		_wall_mats[wid] = WorldShaders.wall_mat(tex)
 
 
 func _static_type_resource(id: int) -> Resource:
@@ -272,6 +339,11 @@ func spawn_into(parent: Node3D) -> void:
 		node.position = Vector3(obj.x, wy, obj.z)
 		node.scale    = Vector3.ONE * ((obj.radius as float) / scale_ratio)
 		parent.add_child(node)
+
+	for wb in _static_boxes:
+		var wy := _get_height_at(wb.x as float, wb.z as float)
+		if is_nan(wy): wy = 0.0
+		parent.add_child(_make_wall_box(wb, wy))
 
 	var water_mat := WorldShaders.water_mat()
 	for wr in _water_rects:
@@ -450,6 +522,28 @@ func _make_chunk(h1: Array, origin: Vector3, mat: Material, flip_normals: bool =
 	var aabb := mesh.get_aabb()
 	if aabb.size.y < 2.0:
 		mi.custom_aabb = AABB(aabb.position + Vector3(0, -1, 0), aabb.size + Vector3(0, 2, 0))
+	return mi
+
+
+# OBB wall from world.bin's box-collider section. The wall_mat shader tiles
+# from world-space position/normal (triplanar), so a plain BoxMesh's own UVs
+# are irrelevant here — that's what keeps the texture at a consistent scale
+# and aligned to each face regardless of the box's size or yaw.
+func _make_wall_box(box: Dictionary, ground_y: float) -> MeshInstance3D:
+	var height   := box.height as float
+	var y_offset := box.get("y_offset", 0.0) as float
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3((box.half_x as float) * 2.0, height, (box.half_z as float) * 2.0)
+	var mat: ShaderMaterial = _wall_mats.get(box.type as int, _wall_mat_default)
+	mesh.surface_set_material(0, mat)
+	var mi := MeshInstance3D.new()
+	mi.mesh        = mesh
+	# Base sits at ground_y + y_offset (lets a wall float, e.g. act as a
+	# ceiling), box center is half its height above that — mirrors the
+	# server's top_y = terrain + y_offset + height (world.h/world.cpp).
+	mi.position    = Vector3(box.x as float, ground_y + y_offset + height * 0.5, box.z as float)
+	mi.rotation.y  = box.rot_y as float
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 	return mi
 
 

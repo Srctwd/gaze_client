@@ -81,6 +81,39 @@ void fragment() {
 	return mat
 
 
+static func wall_mat(texture: Texture2D = _CAVE_TEX, tint: Color = Color(1.0, 1.0, 1.0, 1.0)) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+uniform sampler2D wall_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+uniform float tile_scale = 2.0;
+varying vec3 world_pos;
+varying vec3 world_normal;
+void vertex() {
+	world_pos    = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+void fragment() {
+	// Triplanar, world-space sampling: an OBB wall's own UVs would stretch the
+	// texture to fit each box's size/rotation, so tile from world position
+	// instead — every wall gets the same on-the-ground texel density and the
+	// side faces stay aligned to the wall regardless of its yaw.
+	vec3 blend = abs(world_normal);
+	blend /= (blend.x + blend.y + blend.z);
+	vec3 tex_x = texture(wall_tex, world_pos.yz / tile_scale).rgb;
+	vec3 tex_y = texture(wall_tex, world_pos.xz / tile_scale).rgb;
+	vec3 tex_z = texture(wall_tex, world_pos.xy / tile_scale).rgb;
+	ALBEDO = (tex_x * blend.x + tex_y * blend.y + tex_z * blend.z) * tint.rgb;
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("wall_tex", texture)
+	m.set_shader_parameter("tint", tint)
+	return m
+
+
 static func biome_surface_mat(biome_id: int, biomes: Array) -> ShaderMaterial:
 	var mat_name := "grassland"
 	for bdef in biomes:

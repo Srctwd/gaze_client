@@ -1,0 +1,12 @@
+[
+  {
+    "id": 0,
+    "name": "Stone Wall",
+    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg"
+  },
+  {
+    "id": 1,
+    "name": "Cave Wall",
+    "texture": "res://assets/cave_texture.jpg"
+  }
+]
