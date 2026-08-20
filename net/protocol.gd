@@ -46,6 +46,15 @@ const UNIT_MINO_MAGE := 0x03
 const UNIT_SLIME     := 0x04
 const UNIT_SNAKE     := 0x05
 const UNIT_GOBLIN    := 0x06
+const UNIT_DEMON     := 0x07
+
+# ── Locomotion animation state (AnimState enum, network/protocol.h) ────────
+# Carried on SpawnUnit/UnitPos. Ground has no separate idle/walk/run signal —
+# derive that from position delta between updates, same as movement.
+const ANIM_GROUND := 0
+const ANIM_JUMP   := 1
+const ANIM_FALL   := 2
+const ANIM_SWIM   := 3
 
 # ── Action types (ActionType enum) ────────────────────────────────────────
 const ACTION_NOTHING := 0

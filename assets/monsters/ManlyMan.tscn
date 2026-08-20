@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://bdrh3tefwbi2x"]
+
+[ext_resource type="PackedScene" uid="uid://wx50wmf1dww5" path="res://assets/meshes/low_poly_manly_man.glb" id="1_r7j4i"]
+
+[node name="low_poly_manly_man" unique_id=1293205761 instance=ExtResource("1_r7j4i")]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0)
+
+[node name="BoneAttachment3D" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(9568987) index="1" unique_id=1850601423]
+transform = Transform3D(-0.9885714, -0.13549191, 0.06609346, 0.15075289, -0.8884983, 0.4334094, 4.917383e-07, 0.43841994, 0.89877, -1.1046395, 0.49968076, 0.38396072)
+bone_name = "hand.r"
+bone_idx = 11
+
+[node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=1888108630]
+transform = Transform3D(0.99999994, -8.742277e-08, 8.74228e-08, -8.742277e-08, -0.9999999, 0, 8.742277e-08, -7.642741e-15, -1.0000002, 0.060681462, 0.28999162, 0.013255954)
+
+[node name="BoneAttachment3D2" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(9568987) index="2" unique_id=2076363227]
+transform = Transform3D(1, 0, 2.3841864e-07, 6.501062e-08, 0.9621064, -0.27267423, -2.293841e-07, 0.27267423, 0.9621064, 0, 2.0931845, 1.5528559e-07)
+bone_name = "head"
+bone_idx = 3
+
+[node name="Head" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D2" index="0" unique_id=446201467]
+transform = Transform3D(0.99999976, 0, -5.684342e-14, -2.1316282e-14, 1, 0, -2.842171e-14, 0, 1, -0.01805923, 0.4196868, 0.06488645)
+
+[node name="BoneAttachment3D3" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(9568987) index="3" unique_id=1754178216]
+transform = Transform3D(-0.9885714, 0.13549191, -0.06609346, -0.15075289, -0.8884983, 0.4334094, -4.917383e-07, 0.43841994, 0.89877, 1.1046395, 0.49968076, 0.38396072)
+bone_name = "hand.l"
+bone_idx = 7
+
+[node name="OffHandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D3" index="0" unique_id=869926455]
+transform = Transform3D(0.99999976, -8.742278e-08, 8.74228e-08, -8.7422755e-08, -1, 0, 8.7422755e-08, -7.642742e-15, -1.0000002, -0.0016051531, 0.31736088, -0.1284455)

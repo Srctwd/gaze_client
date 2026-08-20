@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://fhqcjoj6sreq"]
+
+[ext_resource type="PackedScene" uid="uid://daon27qb3n62r" path="res://assets/slime_green.glb" id="1_8lv2m"]
+
+[node name="slime_green" unique_id=1558659068 instance=ExtResource("1_8lv2m")]
+
+[node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=1876725688]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.32741654, 0)

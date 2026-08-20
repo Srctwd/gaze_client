@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://sj1gy453ldhy"]
 
-[ext_resource type="PackedScene" uid="uid://qf1w0atbtlhj" path="res://assets/items/torch01.glb" id="1_g8p30"]
+[ext_resource type="PackedScene" uid="uid://qf1w0atbtlhj" path="res://assets/meshes/torch01.glb" id="1_g8p30"]
 [ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="1_iahd2"]
 [ext_resource type="Texture2D" uid="uid://b5bwnp2l3mgvl" path="res://assets/particles/flame_particle_pixel01.png" id="3_iahd2"]
 
@@ -47,14 +47,13 @@ alpha_curve = SubResource("CurveTexture_tyv0i")
 [sub_resource type="QuadMesh" id="QuadMesh_6yvt0"]
 
 [node name="Torch" type="Node3D" unique_id=1121564444]
-transform = Transform3D(0.3, 0, 0, 0, -1.3113417e-08, 0.3, 0, -0.3, -1.3113417e-08, 0, 0, 0)
+transform = Transform3D(0.4, 0, 0, 0, -1.7484556e-08, 0.4, 0, -0.4, -1.7484556e-08, 0, 0, 0)
 script = ExtResource("1_iahd2")
-grip_point = NodePath("Marker3D")
 
 [node name="torch01" parent="." unique_id=1152962316 instance=ExtResource("1_g8p30")]
 
-[node name="Marker3D" type="Marker3D" parent="." unique_id=2109476962]
-transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -1.7763568e-14, 0, 1.7763568e-14, 0.99999976, 0, 3.1508648, 5.408524e-08)
+[node name="HandGrip" type="Marker3D" parent="." unique_id=2109476962]
+transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.4868996e-14, 0, 2.4868996e-14, 0.99999976, 0, 1.9853529, 3.1391068e-09)
 
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." unique_id=1448723297]
 transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.842171e-14, 0, 2.842171e-14, 0.99999976, 0, 5.588713, -1.0250119e-08)

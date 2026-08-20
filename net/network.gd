@@ -2,8 +2,8 @@ extends Node
 
 signal connected
 signal disconnected
-signal unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3)
-signal unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float)
+signal unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, anim_state: int)
+signal unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, anim_state: int)
 signal time_of_day(game_seconds: float)
 signal login_ok(net_id: int)
 signal login_fail
@@ -57,13 +57,13 @@ func _parse(data: PackedByteArray) -> void:
 	if data.is_empty():
 		return
 	match data[0]:
-		0x01: # SpawnUnit: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3)
+		0x01: # SpawnUnit: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) anim_state(u8)
 			unit_spawned.emit(data.decode_u32(1), data[5], data[6],
-				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)))
-		0x02: # UnitPos: net_id(u32) unit_type(u8) variant(u8) x y z rot_y (f32×4)
+				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)), data[19])
+		0x02: # UnitPos: net_id(u32) unit_type(u8) variant(u8) x y z rot_y (f32×4) anim_state(u8)
 			unit_pos.emit(data.decode_u32(1), data[5], data[6],
 				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)),
-				data.decode_float(19))
+				data.decode_float(19), data[23])
 		0x04: # TimeOfDay: game_seconds(f32)
 			time_of_day.emit(data.decode_float(1))
 		0x06: # LoginResponse: status(u8) [net_id(u32)]

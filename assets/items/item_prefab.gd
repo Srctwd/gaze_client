@@ -7,7 +7,7 @@ class_name ItemPrefab
 ## Marker3D child — the point on the model that should align to the hand/FP anchor.
 ## Lets each item define its own grip (a staff held near the base vs. a dagger held by the blade)
 ## instead of every item sharing one fixed _HAND_POS/_HAND_ROT.
-@export var grip_point: NodePath = ^"GripPoint"
+@export var grip_point: NodePath = ^"HandGrip"
 
 ## Optional — name of a clip on this scene's own AnimationPlayer, played on attack.
 ## Left empty, the caller falls back to the current generic swing tween, so simple

@@ -11,8 +11,8 @@ const SKY_DIST: float    = 800.0
 
 # Sun-driven curves, all keyed by `elevation` (0 = horizon/night, 1 = zenith/noon).
 const SUN_ENERGY_MAX       : float = 0.2
-const AMBIENT_ENERGY_DAY   : float = 0.275
-const AMBIENT_ENERGY_NIGHT : float = 0.11
+const AMBIENT_ENERGY_DAY   : float = 0.3025
+const AMBIENT_ENERGY_NIGHT : float = 0.121
 const AMBIENT_COLOR_DAY    : Color = Color(0.6, 0.65, 0.8)
 const AMBIENT_COLOR_NIGHT  : Color = Color(0.15, 0.18, 0.28)
 

@@ -1,6 +1,9 @@
 [gd_scene format=3 uid="uid://b411jxsxlin0k"]
 
-[ext_resource type="PackedScene" uid="uid://6s6fwtmkfjbi" path="res://assets/arrow.glb" id="1"]
+[ext_resource type="PackedScene" uid="uid://6s6fwtmkfjbi" path="res://assets/meshes/arrow.glb" id="1"]
 
 [node name="Arrow" unique_id=621780838 instance=ExtResource("1")]
-transform = Transform3D(-0.15, 0, -1.3113417e-08, 0, 0.15, 0, 1.3113417e-08, 0, -0.15, 0, 0, -0.7486641)
+transform = Transform3D(-0.12, 0, -1.8119495e-08, 0, 0.12, 0, 1.8119495e-08, 0, -0.12, 0, 0, -0.7486641)
+
+[node name="HandGrip" type="Marker3D" parent="." index="4" unique_id=1987844490]
+transform = Transform3D(0.99999976, 0, -1.4210855e-14, 0, 0.99999976, 0, 1.4210855e-14, 0, 0.99999976, 4.356484e-07, 0, -4.9832373)

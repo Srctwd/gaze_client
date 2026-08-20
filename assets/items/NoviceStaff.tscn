@@ -2,16 +2,16 @@
 
 [ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="1_4mgmo"]
 [ext_resource type="PackedScene" uid="uid://die0hbfb0swcn" path="res://assets/projectiles/energy_01.tscn" id="2_qp4kv"]
-[ext_resource type="PackedScene" uid="uid://dpbimbc81q5sa" path="res://assets/WoodenStaff01.glb" id="3_5pgw3"]
+[ext_resource type="PackedScene" uid="uid://dpbimbc81q5sa" path="res://assets/meshes/WoodenStaff01.glb" id="3_5pgw3"]
 
 [node name="NoviceStaff" type="Node3D" unique_id=135489644]
 transform = Transform3D(0.105, 0, 0, 0, 0.105, 0, 0, 0, 0.105, 0, 0, 0)
 script = ExtResource("1_4mgmo")
 projectile_scene = ExtResource("2_qp4kv")
-grip_point = NodePath("Marker3D")
+grip_point = NodePath("HandGrip")
 
 [node name="WoodenStaff01" parent="." unique_id=971176690 instance=ExtResource("3_5pgw3")]
 transform = Transform3D(1, 0, 0, 0, -1, 8.742278e-08, 0, -8.742278e-08, -1, 0, 0, 0)
 
-[node name="Marker3D" type="Marker3D" parent="." unique_id=356200648]
+[node name="HandGrip" type="Marker3D" parent="." unique_id=356200648]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.2716888, 0, -12.812413)

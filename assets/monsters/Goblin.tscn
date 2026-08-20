@@ -1,3 +1,34 @@
-[gd_scene format=3 uid="uid://ba6hfkyb3s4s7"]
+[gd_scene format=3 uid="uid://bgpmxsll2eemj"]
 
-[node name="Goblin" type="Node2D" unique_id=533214716]
+[ext_resource type="PackedScene" uid="uid://cjc1nkmr6ihup" path="res://assets/meshes/low_poly_goblin_man.glb" id="1_q10us"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_q10us"]
+cull_mode = 2
+albedo_color = Color(1.7808378e-06, 0.39309993, 0.11588142, 1)
+
+[node name="Goblin" unique_id=561435952 instance=ExtResource("1_q10us")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0)
+
+[node name="Skeleton3D" parent="Armature" parent_id_path=PackedInt32Array(487006846) index="0" unique_id=1564441276]
+bones/1/rotation = Quaternion(7.82446e-08, -6.779955e-08, 0.005922214, 0.9999825)
+bones/4/rotation = Quaternion(-0.11254542, 0.10034795, -0.7456026, 0.6491076)
+bones/5/rotation = Quaternion(-0.005541237, 0.006148103, -0.5921493, 0.8057857)
+bones/6/rotation = Quaternion(-0.08056538, 0.011325167, -0.006696211, 0.99666256)
+bones/7/rotation = Quaternion(1.0310226e-07, -8.967305e-09, 0.7463959, 0.6655022)
+bones/8/rotation = Quaternion(1.7653356e-07, -8.171105e-08, 0.57338876, 0.8192834)
+bones/9/rotation = Quaternion(8.38481e-09, -1.1587711e-07, 0.032166965, 0.9994825)
+bones/10/rotation = Quaternion(-0.56860477, -0.33845234, -0.27607355, 0.6970811)
+bones/11/rotation = Quaternion(-0.7207551, 0.02884419, 0.019869493, 0.6923043)
+bones/14/rotation = Quaternion(-0.721607, -0.029513717, -0.020385694, 0.69137305)
+bones/15/rotation = Quaternion(-0.08483437, -1.717068e-07, 2.0196751e-08, 0.99639505)
+
+[node name="BASE_Low Poly Man_0" parent="Armature/Skeleton3D" index="0" unique_id=1981378530]
+surface_material_override/0 = SubResource("StandardMaterial3D_q10us")
+
+[node name="BoneAttachment3D" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="1" unique_id=2097080373]
+transform = Transform3D(-0.9874063, -0.15820365, 6.110802e-07, 0.15820363, -0.9874062, -2.1750233e-07, 6.377943e-07, -1.1808803e-07, 1, -0.62258554, 2.5628245, 0.21331483)
+bone_name = "forearm.r"
+bone_idx = 9
+
+[node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=1078544180]
+transform = Transform3D(1, 7.450573e-08, 2.842171e-13, -7.531597e-14, 1, 2.842171e-14, 2.842171e-13, 4.2632564e-14, 1, -0.0022113323, 1.0857941, 0.484353)

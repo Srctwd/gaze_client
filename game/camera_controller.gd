@@ -2,6 +2,8 @@ class_name CameraController
 extends Camera3D
 
 var target:       Vector3 = Vector3.ZERO
+var head_target:  Vector3 = Vector3.ZERO
+var _has_head:    bool    = false
 var yaw:          float   = 0.0
 var pitch:        float   = -0.5
 var distance:     float   = 12.0
@@ -51,9 +53,18 @@ func follow(pos: Vector3) -> void:
 	target = pos
 	_apply()
 
+# Called with the local player's Head Marker3D world position (tracks the
+# actual head bone, including animation bob) whenever the model provides one
+# — falls back to a fixed eye-height offset from `target` otherwise.
+func follow_head(pos: Vector3) -> void:
+	head_target = pos
+	_has_head = true
+	if first_person:
+		_apply()
+
 func _apply() -> void:
 	if first_person:
-		position = target + Vector3(0, 1.7, 0)
+		position = head_target if _has_head else target + Vector3(0, 1.7, 0)
 		look_at(position + Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)),
 				Vector3.UP)
 	else:

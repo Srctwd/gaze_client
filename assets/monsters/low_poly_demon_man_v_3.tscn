@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://clynuaf8mt1mv"]
+
+[ext_resource type="PackedScene" uid="uid://ddyd3kp6ygxdp" path="res://assets/meshes/low_poly_demon_man_v3.glb" id="1_tmfrf"]
+
+[node name="low_poly_demon_man_v3" unique_id=1869682763 instance=ExtResource("1_tmfrf")]
+
+[node name="Skeleton3D" parent="Armature" parent_id_path=PackedInt32Array(1376324402) index="1" unique_id=1633257953]
+bones/1/rotation = Quaternion(0.26272994, 0.008607315, -0.0023437738, 0.9648282)
+bones/2/rotation = Quaternion(-0.060134254, 5.3971283e-10, -1.464894e-08, 0.99819034)
+bones/3/rotation = Quaternion(-0.032737546, 0.019795047, -0.86653125, 0.49765465)
+bones/4/rotation = Quaternion(0.31164798, -0.15279126, -0.35589987, 0.8676784)
+bones/6/rotation = Quaternion(-0.0011386157, 0.007748684, 0.87482435, 0.48437703)
+bones/7/rotation = Quaternion(0.29955825, 0.097940184, 0.39386776, 0.863447)
+bones/8/rotation = Quaternion(-1.588133e-08, 1.2880629e-07, 0.034840446, 0.9993929)
+bones/10/rotation = Quaternion(-0.61394066, 1.5428964e-07, -3.7514692e-08, 0.7893522)
+bones/11/rotation = Quaternion(-0.0789283, 0.007342538, 0.19210085, 0.97816855)
+bones/12/rotation = Quaternion(-0.034790788, -0.061434038, -0.7524451, 0.6548602)
+bones/14/rotation = Quaternion(-0.61394066, -1.5428964e-07, 3.7514692e-08, 0.7893522)
+bones/15/rotation = Quaternion(-0.0789283, -0.007342538, -0.19210085, 0.97816855)
+bones/16/rotation = Quaternion(-0.034790788, 0.061434038, 0.7524451, 0.6548602)
+
+[node name="BoneAttachment3D" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="3" unique_id=273231118]
+transform = Transform3D(-0.9832628, -0.028703626, 0.17991744, 0.048360575, -0.99320644, 0.10584023, 0.17565714, 0.112769775, 0.97797114, -0.66063523, 0.703563, 0.32343835)
+bone_name = "forearm.r"
+bone_idx = 8
+
+[node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=465881742]
+transform = Transform3D(1.0000005, -7.450581e-09, -1.1920929e-07, -1.8626451e-09, 1, 7.450581e-09, 0, 2.9802322e-08, 1, 0.04886639, 0.95253885, 0.41902468)

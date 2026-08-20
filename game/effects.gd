@@ -1,6 +1,6 @@
 extends Node
 
-const _FLAME_PARTICLES_SCENE := preload("res://assets/vfx/flame_particles_3d.tscn")
+const _FLAME_PARTICLES_SCENE := preload("res://assets/effects/flame_particles_3d.tscn")
 const _MELEE_EFFECT_SCENE := preload("res://assets/melee_effect.glb")
 
 @onready var _entity_manager: Node = $"../EntityManager"

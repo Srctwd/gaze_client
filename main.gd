@@ -61,6 +61,7 @@ func _ready() -> void:
 	login_ui.login_pressed.connect(_on_login_pressed)
 	character_ui.character_confirmed.connect(_on_character_confirmed)
 	entity_manager.player_moved.connect(camera.follow)
+	entity_manager.player_head_moved.connect(camera.follow_head)
 	entity_manager.player_moved.connect(_on_player_moved)
 
 

@@ -4,12 +4,17 @@ extends RefCounted
 const MAGIC        := 0x47574C44  # "GWLD" - legacy, biome props have no weight
 const MAGIC_W      := 0x47574C32  # "GWL2" - biome props are (path, weight)
 const MAGIC_B      := 0x47574C33  # "GWL3" - adds a box-collider section (OBB walls)
+# "GWL4" - identical to GWL3 except each biome's spawner field is a pascal
+# string (monster name, resolved server-side via name_to_type()) instead of a
+# raw u8 monster id — not used on client either way, just read to advance
+# the cursor correctly.
+const MAGIC_G      := 0x47574C34
 const WorldShaders  = preload("res://world/world_shaders.gd")
 
 # Preloaded so the exporter includes them (paths come from world.bin at runtime)
-const _PRELOAD_FERN01   = preload("res://assets/fern01.glb")
-const _PRELOAD_FERN02   = preload("res://assets/fern02.glb")
-const _PRELOAD_GRASS_BUSH_SMALL = preload("res://assets/stylized_grass_bush_small.glb")
+const _PRELOAD_FERN01   = preload("res://assets/meshes/fern01.glb")
+const _PRELOAD_FERN02   = preload("res://assets/meshes/fern02.glb")
+const _PRELOAD_GRASS_BUSH_SMALL = preload("res://assets/meshes/stylized_grass_bush_small.glb")
 
 var chunk_cells : int
 var chunks_x    : int
@@ -63,7 +68,7 @@ func load(path: String) -> bool:
 	var first := f.get_32()
 	var static_offset: int
 	var box_offset: int = 0
-	if first == MAGIC or first == MAGIC_W or first == MAGIC_B:
+	if first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G:
 		chunk_cells   = f.get_32()
 		chunks_x      = f.get_32()
 		chunks_z      = f.get_32()
@@ -73,7 +78,7 @@ func load(path: String) -> bool:
 		static_offset = f.get_32()
 		origin_cx = raw_ocx if raw_ocx < 0x80000000 else int(raw_ocx) - 0x100000000
 		origin_cz = raw_ocz if raw_ocz < 0x80000000 else int(raw_ocz) - 0x100000000
-		if first == MAGIC_B:
+		if first == MAGIC_B or first == MAGIC_G:
 			box_offset = f.get_32()
 	else:
 		chunk_cells   = first
@@ -90,9 +95,9 @@ func load(path: String) -> bool:
 	var stride := chunk_cells + 1
 	var cells  := stride * stride
 
-	var has_biome := (first == MAGIC or first == MAGIC_W or first == MAGIC_B)
-	var has_prop_weight := (first == MAGIC_W or first == MAGIC_B)
-	var has_boxes := (first == MAGIC_B)
+	var has_biome := (first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G)
+	var has_prop_weight := (first == MAGIC_W or first == MAGIC_B or first == MAGIC_G)
+	var has_boxes := (first == MAGIC_B or first == MAGIC_G)
 
 	var types   : Array[int] = []
 	var biomes_ : Array[int] = []
@@ -171,8 +176,17 @@ func load(path: String) -> bool:
 			for _pi in range(pc):
 				n = f.get_8(); bprops.append(f.get_buffer(n).get_string_from_utf8() if n > 0 else "")
 				bweights.append(f.get_float() if has_prop_weight else 1.0)
-			# spawner fields (not used on client — read to advance position)
-			var bst  := f.get_8(); var bsi := f.get_float()
+			# spawner fields (not used on client — read to advance position).
+			# GWL4 re-encodes the monster-id field as a pascal string (the
+			# monster's name, resolved server-side via name_to_type()) instead
+			# of a raw u8 id — everything else about the biome record is
+			# unchanged from GWL3.
+			var bst
+			if first == MAGIC_G:
+				n = f.get_8(); bst = f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
+			else:
+				bst = f.get_8()
+			var bsi := f.get_float()
 			var bsm  := f.get_8(); var bsp := f.get_float()
 			_biomes.append({ "id": bid, "name": bname, "material": bmat, "props": bprops,
 				"prop_weights": bweights,
@@ -545,6 +559,3 @@ func _make_wall_box(box: Dictionary, ground_y: float) -> MeshInstance3D:
 	mi.rotation.y  = box.rot_y as float
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 	return mi
-
-
-

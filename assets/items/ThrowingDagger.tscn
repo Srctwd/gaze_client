@@ -18,5 +18,5 @@ transform = Transform3D(0.8, 0, 0, 0, -3.4969112e-08, 0.8, 0, -0.8, -3.4969112e-
 [node name="Cone" parent="." index="2" unique_id=1324184400]
 transform = Transform3D(0.71000016, 0, 0, 0, -3.1035093e-08, 0.71000016, 0, -0.71000016, -3.1035093e-08, 0, 0.3786579, -0.12466646)
 
-[node name="Marker3D" type="Marker3D" parent="." index="4" unique_id=525554537]
+[node name="HandGrip" type="Marker3D" parent="." index="4" unique_id=525554537]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 5.6782994)

@@ -1,5 +1,7 @@
-GPUParticles3D
 Marker3D
+BoneAttachment3D
+AnimationTree
+GPUParticles3D
 OmniLight3D
 MeshInstance3D
 Node3D
