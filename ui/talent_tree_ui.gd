@@ -7,7 +7,11 @@ extends CanvasLayer
 # Fullscreen, opaque, starry backdrop. Tier 0 sits at the bottom of the
 # screen, higher tiers stack upward.
 
-signal forced_pick_completed
+# Emitted by selection mode (character creation, see start_selection()) — a
+# purely local pick, no network traffic involved since there's no character/
+# session to talk to yet.
+signal talent_selected(node_id: int)
+signal selection_cancelled
 
 const _NODE_SIZE  := Vector2(100, 110)  # footprint: icon + name label stacked under it
 const _ICON_SIZE  := Vector2(64, 64)
@@ -27,6 +31,10 @@ var _tree := TalentTree.new()
 var _starfield: Control
 var _stars: Array = []  # Array[{"pos": Vector2 (0..1), "radius": float, "brightness": float}]
 
+const _TITLE_DEFAULT   := "Talent Tree"
+const _TITLE_SELECTION := "Choose your first talent"
+
+var _title_label: Label
 var _points_label: Label
 var _desc_label: Label
 var _tree_area: Control
@@ -38,12 +46,13 @@ var _row_frac: Dictionary = {}  # node_id -> float (0 = top, 1 = bottom)
 var _col_frac: Dictionary = {}  # node_id -> float (0..1)
 var _centers: Dictionary = {}   # node_id -> Vector2 (local to _tree_area, updated on resize)
 var _edges: Array = []          # Array[Dictionary] of {child, parent, optional}
+var _row_frac_backup: Dictionary = {}  # node_id -> float, saved while selection mode overrides it
 
 var _points_available: int = 0
 var _learned: Dictionary = {}  # node_id -> true
 var _close_btn: Button
-var _forced: bool = false          # true while blocking on a mandatory first pick
 var _expect_open: bool = false     # true after we explicitly requested a sync (FrozenStarlight interact)
+var _selection_mode: bool = false  # true while picking a starting talent during character creation (no network involved)
 
 # Click-drag panning of the tree layout within _tree_area. Tracked at the
 # _input() level (not a Control's gui_input) so dragging keeps working even
@@ -87,11 +96,11 @@ func _ready() -> void:
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_child(vbox)
 
-	var title := Label.new()
-	title.text = "Talent Tree"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 32)
-	vbox.add_child(title)
+	_title_label = Label.new()
+	_title_label.text = _TITLE_DEFAULT
+	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_label.add_theme_font_size_override("font_size", 32)
+	vbox.add_child(_title_label)
 
 	_points_label = Label.new()
 	_points_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -342,6 +351,8 @@ func _draw_edges() -> void:
 		var parent_id: int = edge.parent
 		if not (_centers.has(child_id) and _centers.has(parent_id)):
 			continue
+		if not (_containers[child_id].visible and _containers[parent_id].visible):
+			continue
 		var learned := _learned.has(child_id) and _learned.has(parent_id)
 		var color := Color(0.6, 1.0, 0.6) if learned else Color(0.5, 0.5, 0.5)
 
@@ -364,14 +375,6 @@ func _draw_arrowhead(tip: Vector2, direction: Vector2, color: Color) -> void:
 	_tree_area.draw_colored_polygon([tip, back + perp, back - perp], color)
 
 
-func force_first_pick() -> void:
-	_forced = true
-	_close_btn.visible = false
-	_points_label.text = "Choose your first talent"
-	visible = true
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-
-
 # Called right before we send a FrozenStarlight InteractRequest, so the
 # TalentSync that comes back in response is allowed to actually open the UI.
 # Without this, ANY TalentSync — e.g. the server's routine broadcast when a
@@ -380,20 +383,68 @@ func expect_open() -> void:
 	_expect_open = true
 
 
+# Character creation: let the player pick their starting talent before the
+# character even exists server-side, so its node_id can ride along on the
+# creation request instead of a separate post-creation learn-talent step.
+# No character/session exists yet, so this never touches Network.
+#
+# Only the first tier is offered — talents.json's tier field is 0-indexed, so
+# that's tier == 0 (a few tier-1 entries, e.g. "Lightning Knowledge", also
+# happen to have no prereq, so filtering on empty `_learned`/requirement_met
+# alone would leak them in too; tier is the only reliable filter here).
+const _STARTING_TIER := 0
+
+# Pulled up near the title instead of sitting at row_frac 1.0 (tier 0's
+# normal "bottom of the tree" position) — with every other tier hidden that
+# would otherwise leave a single row stranded far below a wall of empty space.
+const _SELECTION_ROW_FRAC := 0.15
+
+func start_selection() -> void:
+	_selection_mode = true
+	_points_available = 1
+	_learned.clear()
+	_close_btn.text = "Back"
+	_title_label.text = _TITLE_SELECTION
+	visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_refresh()
+	_set_tier_visibility(_STARTING_TIER)
+
+
+func _set_tier_visibility(only_tier: int) -> void:
+	_row_frac_backup.clear()
+	for t in _tree.talents:
+		var shown: bool = t.tier == only_tier
+		_containers[t.id].visible = shown
+		if shown:
+			_row_frac_backup[t.id] = _row_frac[t.id]
+			_row_frac[t.id] = _SELECTION_ROW_FRAC
+	_reposition()
+
+
+func _show_all_tiers() -> void:
+	_title_label.text = _TITLE_DEFAULT
+	for t in _tree.talents:
+		_containers[t.id].visible = true
+	for id in _row_frac_backup:
+		_row_frac[id] = _row_frac_backup[id]
+	_row_frac_backup.clear()
+	_reposition()
+
+
 func _on_talent_synced(points_available: int, learned: Array) -> void:
 	_points_available = points_available
 	_learned.clear()
 	for id in learned:
 		_learned[id] = true
 
-	if _forced and not _learned.is_empty():
-		_forced = false
-		_close_btn.visible = true
-		visible = false
-		forced_pick_completed.emit()
-		return
-
 	_refresh()
+
+	# Only ever opens when explicitly requested (the FrozenStarlight menu
+	# item) — the starting talent is now picked before the character even
+	# exists (see start_selection()), so there's no "first login" case left
+	# that should pop this open on its own, even if learned still came back
+	# empty for some reason.
 	if not _expect_open:
 		return
 	_expect_open = false
@@ -428,14 +479,25 @@ func _on_talent_unhovered() -> void:
 
 func _on_talent_pressed(node_id: int) -> void:
 	var t = _tree.by_id[node_id]
+	if _selection_mode:
+		_selection_mode = false
+		_close_btn.text = "Close"
+		_show_all_tiers()
+		visible = false
+		talent_selected.emit(node_id)
+		return
 	print("[talent-debug] pressed id=", node_id, " key=", t.key,
 		" points_available=", _points_available, " disabled=", _buttons[node_id].disabled)
 	Network.send(Protocol.pkt_learn_talent(node_id))
 
 
 func _close() -> void:
-	if _forced:
-		return
 	visible = false
+	if _selection_mode:
+		_selection_mode = false
+		_close_btn.text = "Close"
+		_show_all_tiers()
+		selection_cancelled.emit()
+		return
 	if GameState.player_net_id != -1:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

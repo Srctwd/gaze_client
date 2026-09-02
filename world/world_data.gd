@@ -331,12 +331,12 @@ func spawn_into(parent: Node3D) -> void:
 
 		var floor_mi := _make_chunk(_chunks[i].h1, origin, chunk_mat)
 		floor_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-		parent.add_child(floor_mi)
+		parent.add_child(_with_collision(floor_mi))
 		if _chunks[i].type == 2:
 			var ceil_mi := _make_chunk(_chunks[i].h2, origin, _mat_cave)
 			ceil_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-			parent.add_child(ceil_mi)
-			parent.add_child(_make_chunk(_chunks[i].h3, origin, _mat_cave_floor))
+			parent.add_child(_with_collision(ceil_mi))
+			parent.add_child(_with_collision(_make_chunk(_chunks[i].h3, origin, _mat_cave_floor)))
 
 		_scatter_biome_props(biome_id, origin, prop_cache, parent)
 
@@ -352,12 +352,12 @@ func spawn_into(parent: Node3D) -> void:
 			scale_ratio = (_static_type_defs[id] as Dictionary).get("scale_ratio", 1.0) as float
 		node.position = Vector3(obj.x, wy, obj.z)
 		node.scale    = Vector3.ONE * ((obj.radius as float) / scale_ratio)
-		parent.add_child(node)
+		parent.add_child(_with_cylinder_collision(node, obj.radius as float, obj.height as float))
 
 	for wb in _static_boxes:
 		var wy := _get_height_at(wb.x as float, wb.z as float)
 		if is_nan(wy): wy = 0.0
-		parent.add_child(_make_wall_box(wb, wy))
+		parent.add_child(_with_collision(_make_wall_box(wb, wy)))
 
 	var water_mat := WorldShaders.water_mat()
 	for wr in _water_rects:
@@ -499,6 +499,72 @@ func _get_height_at(wx: float, wz: float) -> float:
 		return h00 + (h10 - h00) * rx + (h01 - h00) * rz
 	else:
 		return h11 + (h01 - h11) * (1.0 - rx) + (h10 - h11) * (1.0 - rz)
+
+
+# Dedicated physics layer for terrain/wall colliders (see _with_collision) —
+# nothing else in the client sets collision_layer/collision_mask explicitly
+# today, so entity StaticBody3Ds (player/monster) stay on the untouched
+# default layer 1 and can't be hit by anything querying this layer.
+const COLLISION_LAYER_WORLD := 2
+
+# Wraps `mesh_instance` in a StaticBody3D whose collision shape is derived
+# directly from the mesh's own triangles (Mesh.create_trimesh_shape()) — so
+# the collider is definitionally identical to what's rendered, including
+# chunk-border stitching and cave floor/ceiling surfaces, with no separate
+# geometry to keep in sync. Used so a free-aim projectile's client-side visual
+# (see game/free_aim_projectile.gd) can raycast against real terrain/walls
+# instead of always flying through them.
+#
+# create_trimesh_shape() bakes the mesh's raw LOCAL vertex data, with no
+# knowledge of mesh_instance's own position/rotation — so the wrapper body
+# has to take on that transform itself (and mesh_instance reset to identity)
+# for the shape and the render mesh to end up at the same place; parenting
+# both under an identity-transform body would leave every non-origin
+# chunk/wall's collider sitting at world (0,0,0).
+func _with_collision(mesh_instance: MeshInstance3D) -> Node3D:
+	var mesh := mesh_instance.mesh
+	if mesh == null or mesh.get_surface_count() == 0:
+		return mesh_instance
+	var shape := mesh.create_trimesh_shape()
+	if shape == null:
+		return mesh_instance
+	var body := StaticBody3D.new()
+	body.collision_layer = COLLISION_LAYER_WORLD
+	body.collision_mask  = 0
+	body.transform = mesh_instance.transform
+	mesh_instance.transform = Transform3D.IDENTITY
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	body.add_child(cs)
+	body.add_child(mesh_instance)
+	return body
+
+
+# Static objects (trees/rocks) get a simple grounded cylinder collider sized
+# from the same radius/height already used for their visual scale, mirroring
+# how the server represents them (StaticCollider: a plain radius+height
+# cylinder) — rather than deriving an exact trimesh, since `node` here is an
+# arbitrary imported prop scene, not a single mesh we control.
+func _with_cylinder_collision(node: Node3D, radius: float, height: float) -> Node3D:
+	if radius <= 0.0:
+		return node
+	var body := StaticBody3D.new()
+	body.collision_layer = COLLISION_LAYER_WORLD
+	body.collision_mask  = 0
+	body.position = node.position
+	node.position = Vector3.ZERO
+	var shape := CylinderShape3D.new()
+	shape.radius = radius
+	shape.height = height
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	# Cylinder is centered on its own origin; body sits at ground level (node's
+	# original position), so lift the shape to span [ground, ground + height],
+	# matching the server's top_y = ground + height convention.
+	cs.position.y = height * 0.5
+	body.add_child(cs)
+	body.add_child(node)
+	return body
 
 
 func _make_chunk(h1: Array, origin: Vector3, mat: Material, flip_normals: bool = false) -> MeshInstance3D:

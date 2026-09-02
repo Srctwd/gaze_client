@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://dtle8xjb05202" path="res://game/player_controller.gd" id="PlayerControllerScript"]
 [ext_resource type="Script" uid="uid://bo4dreral1k5e" path="res://game/targeting.gd" id="TargetingScript"]
 [ext_resource type="Script" uid="uid://c1a1epmvwr04f" path="res://world/terrain.gd" id="TerrainScript"]
+[ext_resource type="Script" path="res://game/chat_input.gd" id="ChatInputScript"]
 
 [sub_resource type="PhysicalSkyMaterial" id="4"]
 
@@ -69,3 +70,6 @@ script = ExtResource("LoginUIScript")
 
 [node name="Effects" type="Node" parent="." unique_id=555555555]
 script = ExtResource("EffectsScript")
+
+[node name="ChatInput" type="Node" parent="." unique_id=777777777]
+script = ExtResource("ChatInputScript")

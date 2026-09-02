@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://bw0cvrnu5kpi6"]
+
+[ext_resource type="PackedScene" uid="uid://ho2v0ami4k0h" path="res://assets/npcs/Feras.glb" id="1_84mj5"]
+
+[node name="Feras" unique_id=942517304 instance=ExtResource("1_84mj5")]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0)
+
+[node name="Skeleton3D" parent="Armature" parent_id_path=PackedInt32Array(1532304630) index="3" unique_id=473055671]
+bones/0/rotation = Quaternion(-0.0105062425, 0, 0, 0.9999448)
+bones/8/rotation = Quaternion(2.3204367e-07, -1.4760145e-07, 0.8088049, 0.588077)
+bones/9/rotation = Quaternion(0.11175592, 0.06225322, 0.48264107, 0.8664253)
+bones/10/rotation = Quaternion(0.004853922, -0.048809636, 0.033425327, 0.99823684)
+bones/11/rotation = Quaternion(0.10022165, 0.091192484, 0.08526192, 0.9871018)
+bones/13/rotation = Quaternion(-0.76137096, -2.2871967e-08, 1.1098134e-08, 0.6483165)
+bones/17/rotation = Quaternion(-0.76137096, 2.2871967e-08, -1.1098134e-08, 0.6483165)

@@ -18,7 +18,7 @@ const _PICKUP_RANGE   := 3.0
 const OBJ_TYPE_FROZENSTARLIGHT := 2
 
 func _process(delta: float) -> void:
-	if GameState.player_net_id == -1 or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if GameState.player_net_id == -1 or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED or GameState.chat_typing:
 		return
 	var intent := _get_intent()
 	var yaw    := _camera.yaw
@@ -77,7 +77,7 @@ func _get_intent() -> Vector2:
 	return dir
 
 func _input(event: InputEvent) -> void:
-	if GameState.player_net_id == -1 or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if GameState.player_net_id == -1 or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED or GameState.chat_typing:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		# Force a fresh aim sync right before firing — MoveIntent is normally rate-limited
@@ -124,3 +124,13 @@ func _send_intent(dir: Vector2, rot_y: float, pitch: float) -> void:
 	if not Network.is_connected_to_server():
 		return
 	Network.send(Protocol.pkt_move_intent(dir, rot_y, pitch))
+
+# Force-sends a zero move intent so the server stops the player immediately —
+# used when chat typing opens, since _process() stops sending updates at all
+# while GameState.chat_typing is true, and whatever intent was last sent
+# (e.g. still holding W) would otherwise keep the player moving server-side.
+func stop_movement() -> void:
+	_last_intent = Vector2.ZERO
+	_last_yaw    = _camera.yaw
+	_last_pitch  = _camera.pitch
+	_send_intent(_last_intent, _last_yaw, _last_pitch)

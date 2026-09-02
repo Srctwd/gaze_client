@@ -27,6 +27,10 @@ GameState="*res://game_state.gd"
 Network="*res://net/network.gd"
 Protocol="*res://net/protocol.gd"
 
+[audio]
+
+driver/enable_input=true
+
 [display]
 
 window/size/mode=3

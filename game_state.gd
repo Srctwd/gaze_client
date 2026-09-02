@@ -19,6 +19,10 @@ var aim_enabled: bool = false:
 		aim_enabled = value
 		aim_enabled_changed.emit(value)
 
+# True while the chat text box (chat_input.gd) is capturing keystrokes —
+# movement/attack input should be suppressed, but camera look stays active.
+var chat_typing: bool = false
+
 # How fast remote entities (and the local player's camera) ease toward their
 # latest server position — see entity_manager.gd's _process(). Higher = snappier
 # but more tick-jitter visible; lower = smoother but trails the server more.

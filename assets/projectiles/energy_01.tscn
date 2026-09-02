@@ -10,6 +10,7 @@ emission_energy_multiplier = 3.0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v4vra"]
 transparency = 1
+blend_mode = 1
 albedo_color = Color(0.49460304, 0.68471646, 1, 1)
 albedo_texture = ExtResource("2_u1na0")
 albedo_texture_msdf = true
@@ -18,14 +19,15 @@ billboard_keep_scale = true
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_pxldr"]
 emission_shape = 1
-emission_sphere_radius = 0.4
+emission_sphere_radius = 0.3
 gravity = Vector3(0, 0, 0)
-scale_min = 0.7
+scale_min = 0.29999998
+scale_max = 0.5
 
 [sub_resource type="QuadMesh" id="QuadMesh_u1j2e"]
 
 [node name="Energy01" unique_id=1384147374 instance=ExtResource("1_j44vi")]
-transform = Transform3D(0.4, 0, 0, 0, 0.4, 0, 0, 0, 0.4, 0, 0, 0)
+transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, 0)
 
 [node name="Icosphere" parent="." index="0" unique_id=75094170]
 material_override = SubResource("StandardMaterial3D_j44vi")
@@ -40,7 +42,7 @@ omni_range = 4.0
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." index="3" unique_id=987810487]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)
 material_override = SubResource("StandardMaterial3D_v4vra")
-amount = 12
-lifetime = 0.3
+amount = 30
+lifetime = 0.09999999999999999
 process_material = SubResource("ParticleProcessMaterial_pxldr")
 draw_pass_1 = SubResource("QuadMesh_u1j2e")

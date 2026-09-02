@@ -14,7 +14,6 @@ var character_ui: CanvasLayer
 var _black_bg:     CanvasLayer
 var equipment:     Node
 var _talent_tree_ui: CanvasLayer
-var _awaiting_first_talent: bool = false
 
 func _ready() -> void:
 	character_ui = preload("res://ui/character_ui.gd").new()
@@ -30,8 +29,10 @@ func _ready() -> void:
 
 	_talent_tree_ui = preload("res://ui/talent_tree_ui.gd").new()
 	add_child(_talent_tree_ui)
-	_talent_tree_ui.forced_pick_completed.connect(_on_forced_talent_pick_completed)
 	player_controller.set("talent_tree_ui", _talent_tree_ui)
+	character_ui.set("talent_tree_ui", _talent_tree_ui)
+	_talent_tree_ui.talent_selected.connect(character_ui._on_talent_chosen)
+	_talent_tree_ui.selection_cancelled.connect(character_ui._on_talent_selection_cancelled)
 
 	var options_menu := preload("res://ui/options_menu.gd").new()
 	add_child(options_menu)
@@ -54,7 +55,6 @@ func _ready() -> void:
 	Network.disconnected.connect(_on_disconnected)
 	Network.login_ok.connect(_on_login_ok)
 	Network.login_fail.connect(_on_login_fail)
-	Network.talent_synced.connect(_on_talent_synced)
 	Network.unit_destroyed.connect(_on_unit_destroyed)
 	Network.vital_update.connect(_on_vital_update)
 
@@ -103,20 +103,6 @@ func _on_disconnected() -> void:
 func _on_login_ok(net_id: int) -> void:
 	login_ui.clear_error()
 	GameState.player_net_id = net_id
-	_awaiting_first_talent = true  # resolved once the TalentSync that follows login arrives
-
-
-func _on_talent_synced(points_available: int, learned: Array) -> void:
-	if not _awaiting_first_talent:
-		return
-	_awaiting_first_talent = false
-	if learned.is_empty() and points_available > 0:
-		_talent_tree_ui.force_first_pick()
-	else:
-		_reveal_gameplay()
-
-
-func _on_forced_talent_pick_completed() -> void:
 	_reveal_gameplay()
 
 

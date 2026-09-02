@@ -47,6 +47,7 @@ const UNIT_SLIME     := 0x04
 const UNIT_SNAKE     := 0x05
 const UNIT_GOBLIN    := 0x06
 const UNIT_DEMON     := 0x07
+const UNIT_NPC       := 0x08
 
 # ── Locomotion animation state (AnimState enum, network/protocol.h) ────────
 # Carried on SpawnUnit/UnitPos. Ground has no separate idle/walk/run signal —

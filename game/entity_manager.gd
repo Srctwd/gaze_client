@@ -47,6 +47,27 @@ const _LOCOMOTION_CLIPS := ["Idle", "Walk", "Jump", "Fall", "Swim"]
 var _mesh_by_type:  Dictionary = {}  # unit_type (int) -> PackedScene
 var _slime_scenes: Array     = []  # index by (variant >> 6) & 0x3
 
+# The server tracks position.y as the center of a physics sphere resting on
+# the ground (stone_gaze/src/systems/physics.cpp: terrain_surface = sample_floor
+# (...) + rb.radius, applied identically whether grounded, jumping, falling, or
+# swimming) — so the Y it sends is always ground_height + this radius, never
+# literal feet height. Values match monster_types.json's per-type "radius"
+# field (default 0.5, same as RigidBody's default used for the player, which
+# has no override in spawn.cpp). Subtracted unconditionally in every anim
+# state below, since the server's offset is constant across all of them —
+# conditioning this on Ground state (as an earlier attempt did) reintroduces
+# exactly the pop this avoids, right at the Ground/Jump boundary.
+const _GROUND_RADIUS := {
+	Protocol.UNIT_PLAYER:    0.5,
+	Protocol.UNIT_MINOTAUR:  0.5,
+	Protocol.UNIT_MINO_MAGE: 0.5,
+	Protocol.UNIT_SLIME:     0.5,
+	Protocol.UNIT_SNAKE:     0.4,
+	Protocol.UNIT_GOBLIN:    0.35,
+	Protocol.UNIT_DEMON:     0.5,
+	Protocol.UNIT_NPC:       0.5,
+}
+
 # 4 hues per unit type, indexed by headgear bits (variant >> 6) & 0x3
 const _VARIANT_PALETTES := {
 	Protocol.UNIT_MINOTAUR: [
@@ -76,6 +97,7 @@ func _ready() -> void:
 	_mesh_by_type[Protocol.UNIT_SNAKE]     = load("res://assets/snake.glb")
 	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/monsters/Goblin.tscn")
 	_mesh_by_type[Protocol.UNIT_DEMON]     = load("res://assets/monsters/low_poly_demon_man_v_3.tscn")
+	_mesh_by_type[Protocol.UNIT_NPC]       = load("res://assets/npcs/Feras.tscn")
 	_slime_scenes = [
 		load("res://assets/monsters/GreenSlime.tscn"),  # 0 green
 		load("res://assets/slime_blue.glb"),             # 1 blue
@@ -234,6 +256,7 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _
 	if entities.has(net_id):
 		return
 	var body := _make_body(net_id, unit_type, variant)
+	pos.y -= _GROUND_RADIUS.get(unit_type, 0.5)
 	body.position = pos
 	get_parent().add_child(body)
 	entities[net_id] = body
@@ -242,6 +265,7 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _
 
 func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, anim_state: int) -> void:
 	var rot := rot_y + PI
+	pos.y -= _GROUND_RADIUS.get(unit_type, 0.5)
 	if not entities.has(net_id):
 		var body := _make_body(net_id, unit_type, variant)
 		# Snap on first sight — nothing to interpolate from yet, and easing in
@@ -289,6 +313,13 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 			shape.height = 2.0
 		var col := CollisionShape3D.new()
 		col.shape = shape
+		# body.position is ground/feet level (see the XP-orb +Vector3(0,1.2,0)
+		# offset elsewhere in this file); a CylinderShape3D is centered on its
+		# own origin, so without this lift half the collider sits buried
+		# underground — for slimes (height 0.6) that leaves only 0.3m poking
+		# above ground, well below where a free-aim shot flies, so it always
+		# sailed past them. Mirrors world_data.gd's _with_cylinder_collision.
+		col.position.y = shape.height * 0.5
 		body.add_child(col)
 	body.set_meta("net_id", net_id)
 	return body

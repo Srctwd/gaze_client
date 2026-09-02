@@ -2,6 +2,7 @@ extends Node
 
 const _FLAME_PARTICLES_SCENE := preload("res://assets/effects/flame_particles_3d.tscn")
 const _MELEE_EFFECT_SCENE := preload("res://assets/melee_effect.glb")
+const FreeAimProjectile := preload("res://game/free_aim_projectile.gd")
 
 @onready var _entity_manager: Node = $"../EntityManager"
 
@@ -11,11 +12,13 @@ func _ready() -> void:
 	Network.action_ok.connect(_on_action_ok)
 	Network.free_aim_shot.connect(_on_free_aim_shot)
 
-# Cosmetic-only approximation (see design discussion): the server resolves the
-# actual hit itself (projectile_system's free-flight sweep); this just plays a
-# straight-line flight of the full max_range every time, regardless of
-# whether the real projectile stopped sooner. Good enough until/unless this
-# becomes a real synced entity instead.
+# Cosmetic approximation, independent of the server: the server resolves the
+# actual hit itself (projectile_system's free-flight sweep) but nothing syncs
+# that back to the client, so the flight here stops on its own client-side
+# raycast against terrain/walls (see FreeAimProjectile) instead of the real
+# server-resolved stop point. The two won't always agree exactly (different
+# collision geometry, different tick timing), but this removes the
+# obviously-wrong case of a shot visually flying straight through a wall.
 func _on_free_aim_shot(actor_id: int, origin: Vector3, yaw: float, pitch: float, speed: float, max_range: float, effect: int) -> void:
 	if speed <= 0.0:
 		return
@@ -46,18 +49,17 @@ func _on_free_aim_shot(actor_id: int, origin: Vector3, yaw: float, pitch: float,
 	# roll composed on top of look_at's basis, which is a different transform
 	# despite using the same numbers (non-commutative), and was the actual
 	# cause of hand/flying looking inconsistent with each other.
-	var pivot := Node3D.new()
+	var pivot := FreeAimProjectile.new()
 	pivot.position = origin
 	pivot.look_at_from_position(origin, origin + dir, Vector3.UP)
 	get_parent().add_child(pivot)
 	pivot.add_child(mesh)
 
-	var tween := pivot.create_tween()
-	tween.tween_property(pivot, "global_position", origin + dir * max_range, max_range / speed)
-	tween.tween_callback(func():
-		if is_instance_valid(pivot):
-			pivot.queue_free()
-	)
+	var exclude: Array[RID] = []
+	var actor_body := _entity_manager.entities.get(actor_id) as StaticBody3D
+	if actor_body != null:
+		exclude.append(actor_body.get_rid())
+	pivot.launch(dir, speed, max_range, exclude)
 
 func _on_action_ok(actor_id: int, effect: int, target_id: int, action_type: int) -> void:
 	if target_id == 0:

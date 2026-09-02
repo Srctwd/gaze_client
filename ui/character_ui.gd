@@ -7,6 +7,9 @@ const RACES := ["Human", "Homunculi", "Elf", "Orc", "Ogre", "Naga"]
 var _token: String = ""
 var _http: HTTPRequest
 var _selected_char_id: int = -1
+var talent_tree_ui: Node = null  # set by main.gd, matches player_controller's wiring pattern
+var _chosen_talent_id: int = -1
+var _characters: Array = []  # last-fetched character list, for a local dupe-name check before talent selection
 
 var _select_panel: VBoxContainer
 var _create_panel: VBoxContainer
@@ -106,6 +109,7 @@ func _show_create() -> void:
 
 
 func _populate_list(characters: Array) -> void:
+	_characters = characters
 	for child in _list_container.get_children():
 		child.queue_free()
 	for c in characters:
@@ -127,10 +131,37 @@ func _on_create_pressed() -> void:
 	if name_val.is_empty():
 		_create_error.text = "Enter a name."
 		return
-	var body := JSON.stringify({"token": _token, "name": name_val, "race": _race_option.selected})
+	# Catch an obvious duplicate against this account's own already-fetched
+	# characters before spending a round trip through talent selection — the
+	# server still has the last word (a name taken by another account isn't
+	# visible here), checked again once the actual creation request goes out.
+	for c in _characters:
+		if (c["name"] as String).to_lower() == name_val.to_lower():
+			_create_error.text = 'A character named "%s" already exists.' % name_val
+			return
+	if talent_tree_ui == null:
+		return
+	_create_panel.visible = false
+	talent_tree_ui.start_selection()
+
+
+# Talent choice comes before the character exists server-side — the pick
+# rides along on the creation request itself (node_id) rather than a
+# separate learn-talent call after the fact.
+func _on_talent_chosen(node_id: int) -> void:
+	_chosen_talent_id = node_id
+	var name_val := _name_field.text.strip_edges()
+	var body := JSON.stringify({
+		"token": _token, "name": name_val, "race": _race_option.selected,
+		"node_id": _chosen_talent_id,
+	})
 	_http.request(Config.WEBSERVER + "/api/characters",
 		["Content-Type: application/json"],
 		HTTPClient.METHOD_POST, body)
+
+
+func _on_talent_selection_cancelled() -> void:
+	_create_panel.visible = true
 
 
 func _on_http_response(_result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
@@ -144,6 +175,10 @@ func _on_http_response(_result: int, code: int, _headers: PackedStringArray, bod
 		_http.request(Config.WEBSERVER + "/api/characters?token=" + _token,
 			[], HTTPClient.METHOD_GET)
 		return
+	# Creation failed — talent selection already closed itself by this point
+	# (it fires the request right after picking), so surface the error back
+	# on the name/race panel rather than leaving nothing visible.
+	_create_panel.visible = true
 	if code == 400 and json is Dictionary and json.get("detail") == "Name already taken":
 		_create_error.text = 'A character named "%s" already exists.' % _name_field.text.strip_edges()
 		return
