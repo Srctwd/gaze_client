@@ -7,6 +7,7 @@ extends Node
 
 var floor_items:      Node = null
 var talent_tree_ui:   Node = null
+var equipment:        Node = null  # set externally; used to tell E+B which direction to toggle
 var _last_intent   := Vector2.ZERO
 var _last_yaw      := 0.0
 var _last_pitch    := 0.0
@@ -16,6 +17,20 @@ const _PICKUP_HOLD    := 0.15
 const _INTERACT_RANGE := 3.0
 const _PICKUP_RANGE   := 3.0
 const OBJ_TYPE_FROZENSTARLIGHT := 2
+
+const _BAG_DIGIT_KEYS := {
+	KEY_1: 0, KEY_2: 1, KEY_3: 2, KEY_4: 3, KEY_5: 4,
+	KEY_6: 5, KEY_7: 6, KEY_8: 7, KEY_9: 8,
+}
+
+# Shift alone inspects every container slot you're wearing (server no-ops
+# for whichever aren't holding one); Shift+left-click inspects whatever
+# floor item is aimed at (same targeting as E-hold pickup) using data
+# already delivered in SpawnFloorItem — no round trip needed for that one.
+const _INSPECT_SLOTS := [Protocol.SLOT_BAG, Protocol.SLOT_QUIVER, Protocol.SLOT_POUCH]
+
+func _ready() -> void:
+	Network.item_inspected.connect(_on_item_inspected)
 
 func _process(delta: float) -> void:
 	if GameState.player_net_id == -1 or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED or GameState.chat_typing:
@@ -80,6 +95,9 @@ func _input(event: InputEvent) -> void:
 	if GameState.player_net_id == -1 or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED or GameState.chat_typing:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		if Input.is_key_pressed(KEY_SHIFT):
+			_inspect_world_aim()
+			return
 		# Force a fresh aim sync right before firing — MoveIntent is normally rate-limited
 		# by _YAW_THRESHOLD, so a small look adjustment just before the click could
 		# otherwise leave the server's known aim slightly stale for this exact shot.
@@ -107,9 +125,29 @@ func _input(event: InputEvent) -> void:
 			KEY_4:
 				Network.send(Protocol.pkt_slot_swap(Protocol.SLOT_MAINHAND, Protocol.SLOT_ARMOR))
 				return
+			KEY_5:
+				Network.send(Protocol.pkt_slot_swap(Protocol.SLOT_MAINHAND, Protocol.SLOT_POUCH))
+				return
 			KEY_TAB:
 				Network.send(Protocol.pkt_slot_swap(Protocol.SLOT_MAINHAND, Protocol.SLOT_SHEATH))
 				return
+			KEY_B:
+				# Same combo either direction, like the other E+<slot> swaps above —
+				# an empty MainHand means the bag (if any) is already stowed in the
+				# Bag slot, so this toggle brings it back instead of trying (and
+				# silently failing server-side) to stow an empty hand again.
+				var mainhand_item: int = equipment.get_mainhand_item(GameState.player_net_id) if equipment != null else -1
+				if mainhand_item <= 0:
+					Network.send(Protocol.pkt_bag_unequip())
+				else:
+					Network.send(Protocol.pkt_equip_bag_toggle())
+				return
+	if Input.is_key_pressed(KEY_B) and _BAG_DIGIT_KEYS.has(event.keycode):
+		Network.send(Protocol.pkt_bag_slot_swap(_BAG_DIGIT_KEYS[event.keycode]))
+		return
+	if event.keycode == KEY_SHIFT:
+		_inspect_own_gear()
+		return
 	if event.keycode == KEY_1:
 		var aimed_id: int = _targeting.pick_aimed_unit()
 		Network.send(Protocol.pkt_cast(0, aimed_id if aimed_id != -1 else 0))
@@ -134,3 +172,42 @@ func stop_movement() -> void:
 	_last_yaw    = _camera.yaw
 	_last_pitch  = _camera.pitch
 	_send_intent(_last_intent, _last_yaw, _last_pitch)
+
+# Asks the server what's in every container slot worn right now — it
+# silently no-ops (no response) for any slot that isn't holding one, so
+# firing all three blind is simpler than tracking which ones are equipped.
+func _inspect_own_gear() -> void:
+	for slot in _INSPECT_SLOTS:
+		Network.send(Protocol.pkt_inspect_item(slot))
+
+func _on_item_inspected(container_def_id: int, contents: Array) -> void:
+	var container_name: String = Protocol.item_name_by_id.get(container_def_id, "?")
+	print("[inspect] %s: %s" % [container_name, _format_contents(contents)])
+
+# No server round trip — a floor container's contents already arrived with
+# its SpawnFloorItem (see floor_items.gd), same as its position/model.
+func _inspect_world_aim() -> void:
+	if floor_items == null:
+		return
+	var item_id: int = _targeting.pick_aimed_item(floor_items._items)
+	if item_id == -1 or not _is_item_in_pickup_range(item_id):
+		return
+	var data: Dictionary = floor_items.get_item_data(item_id)
+	if data.is_empty():
+		return
+	var item_name: String = Protocol.item_name_by_id.get(data.def_id, "?")
+	print("[inspect] %s on the ground: %s" % [item_name, _format_contents(data.contents)])
+
+# Formats a container's 9 {def_id, quantity} slots into a player-readable
+# list — quantity shown in brackets only for stackable items (max_stack > 1
+# in item_types), matching the resume's example ("Arrow [4]" vs plain "Sword").
+func _format_contents(contents: Array) -> String:
+	var parts: Array = []
+	for slot: Dictionary in contents:
+		var def_id: int = slot.def_id
+		if def_id == 0:
+			continue
+		var item_name: String = Protocol.item_name_by_id.get(def_id, "?")
+		var max_stack: int = Protocol.item_defs.get(def_id, {}).get("max_stack", 1)
+		parts.append("%s [%d]" % [item_name, slot.quantity] if max_stack > 1 else item_name)
+	return ", ".join(parts) if not parts.is_empty() else "(empty)"

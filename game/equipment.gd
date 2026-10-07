@@ -5,10 +5,13 @@ const _HAND_ROT := Vector3(0, 0, 90)
 const _OFFHAND_POS := Vector3(-0.45, 0.9, 0.1)
 const _OFFHAND_ROT := Vector3(0, 0, -90)
 const _HEAD_POS := Vector3(0, 1.7, 0)
+const _BACK_POS := Vector3(0, 1.0, -0.25)
+const _HIP_POS  := Vector3(0.25, 0.9, 0)
 
 @onready var _entity_manager: Node = $"../EntityManager"
 
-var _mainhand: Dictionary = {}  # net_id -> item_def_id currently equipped in SLOT_MAINHAND
+var _mainhand: Dictionary = {}           # net_id -> item_def_id currently equipped in SLOT_MAINHAND
+var _mainhand_quantity: Dictionary = {}  # net_id -> stack count (1 if not stackable, see EquipSync)
 
 func _ready() -> void:
 	Network.equip_synced.connect(_on_equip_synced)
@@ -16,18 +19,24 @@ func _ready() -> void:
 func get_mainhand_item(net_id: int) -> int:
 	return _mainhand.get(net_id, -1)
 
-func _on_equip_synced(net_id: int, slot: int, item_def_id: int) -> void:
+# 1 for anything non-stackable, or the real stack count while MainHand holds
+# a stackable resource (e.g. a pile of arrows/stones) — see HeldStack, item.h.
+func get_mainhand_quantity(net_id: int) -> int:
+	return _mainhand_quantity.get(net_id, 1)
+
+func _on_equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int) -> void:
 	if slot == Protocol.SLOT_MAINHAND:
 		_mainhand[net_id] = item_def_id
+		_mainhand_quantity[net_id] = quantity
 
 	var item_name: String = Protocol.item_name_by_id.get(item_def_id, "")
 	var prefab: PackedScene = Protocol.get_item_prefab(item_name)
 
-	# Mainhand/offhand/headgear all go through the body's baked HandGrip/
-	# OffHandGrip/Head markers (see _get_or_create_hand/_offhand/_head) — same
-	# path for the local player and everyone else, so first-person weapons
-	# swing with the actual hand bone instead of a hardcoded camera-relative
-	# pose.
+	# Mainhand/offhand/headgear/bag/pouch all go through the body's baked
+	# HandGrip/OffHandGrip/Head/Back/Hip markers (see _get_or_create_hand/
+	# _offhand/_head/_back/_hip) — same path for the local player and
+	# everyone else, so first-person weapons swing with the actual hand bone
+	# instead of a hardcoded camera-relative pose.
 	var body := _entity_manager.entities.get(net_id) as StaticBody3D
 	if body == null:
 		return
@@ -38,6 +47,10 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int) -> void:
 			_set_hand_node(_get_or_create_offhand(body), prefab)
 		Protocol.SLOT_HEADGEAR:
 			_set_hand_node(_get_or_create_head(body), prefab)
+		Protocol.SLOT_BAG:
+			_set_hand_node(_get_or_create_back(body), prefab)
+		Protocol.SLOT_POUCH:
+			_set_hand_node(_get_or_create_hip(body), prefab)
 
 # No prefab (res://assets/items/<Name>.tscn missing) means the item def has
 # no client-side representation yet — render nothing rather than guess.
@@ -47,22 +60,31 @@ func _set_hand_node(parent: Node3D, prefab: PackedScene) -> void:
 	if prefab == null:
 		return
 	var node := prefab.instantiate()
+
+	# Equip anchors (HandGrip/OffHandGrip/Head/Back/Hip) sit deep inside the
+	# body model's own hierarchy, which may itself be authored at some
+	# non-1.0 scale (e.g. ManlyMan.tscn's root is 0.3) — without canceling
+	# that ambient scale here, the same item prefab renders smaller equipped
+	# than it does as a floor item (floor_items.gd parents it straight to
+	# the world, with no such scale in the way). Read at runtime rather than
+	# hardcoded so it's correct for whatever body/marker it's attached to.
+	var ambient_scale: Vector3 = parent.global_transform.basis.get_scale()
+	var correction := Vector3.ONE / ambient_scale
+
+	var grip_origin := Vector3.ZERO
 	if node is ItemPrefab:
 		# Align the prefab's own HandGrip marker to `parent` (the body's
-		# HandGrip/OffHandGrip/Head anchor) by wrapping it in a node that
-		# cancels the marker's POSITION only —
-		# never rotation or scale. The item's root transform is whatever
-		# orientation/scale correction its author baked in (which may live on
-		# the root itself, e.g. Torch, or on a child, e.g. NoviceStaff) and
-		# must survive untouched; a pure translation zeroes the marker's world
-		# offset without ever touching that root basis.
-		var grip: Transform3D = (node as ItemPrefab).get_grip_transform()
-		var wrapper := Node3D.new()
-		wrapper.transform = Transform3D(Basis.IDENTITY, -grip.origin)
-		wrapper.add_child(node)
-		parent.add_child(wrapper)
-	else:
-		parent.add_child(node)
+		# HandGrip/OffHandGrip/Head/Back/Hip anchor) — a pure translation
+		# zeroes the marker's world offset without ever touching the item's
+		# own root basis, which is whatever orientation/scale correction its
+		# author baked in (may live on the root itself, e.g. Torch, or on a
+		# child, e.g. NoviceStaff) and must survive untouched.
+		grip_origin = (node as ItemPrefab).get_grip_transform().origin
+
+	var wrapper := Node3D.new()
+	wrapper.transform = Transform3D(Basis().scaled(correction), -(correction * grip_origin))
+	wrapper.add_child(node)
+	parent.add_child(wrapper)
 
 func _get_or_create_hand(body: StaticBody3D) -> Node3D:
 	# Prefer a bone-attached HandGrip marker baked into the model (e.g.
@@ -106,3 +128,29 @@ func _get_or_create_head(body: StaticBody3D) -> Node3D:
 	head.position = _HEAD_POS
 	body.add_child(head)
 	return head
+
+func _get_or_create_back(body: StaticBody3D) -> Node3D:
+	# Prefer a bone-attached Back marker baked into the model (e.g.
+	# ManlyMan.tscn) over the synthetic fallback, same reasoning as
+	# _get_or_create_hand above.
+	var back := body.find_child("Back", true, false) as Node3D
+	if back != null:
+		return back
+	back = Node3D.new()
+	back.name     = "Back"
+	back.position = _BACK_POS
+	body.add_child(back)
+	return back
+
+func _get_or_create_hip(body: StaticBody3D) -> Node3D:
+	# Prefer a bone-attached Hip marker baked into the model (e.g.
+	# ManlyMan.tscn) over the synthetic fallback, same reasoning as
+	# _get_or_create_hand above.
+	var hip := body.find_child("Hip", true, false) as Node3D
+	if hip != null:
+		return hip
+	hip = Node3D.new()
+	hip.name     = "Hip"
+	hip.position = _HIP_POS
+	body.add_child(hip)
+	return hip

@@ -32,6 +32,12 @@ var _player_head: Node3D = null
 # interpolation/network jitter.
 const _MOVE_EPS := 0.05
 
+# How long a freshly spawned monster's meshes stay hidden before revealing —
+# effects.gd's portal (also reacting to Network.unit_spawned) can lag a beat
+# behind this body being added to the tree, and without this delay the
+# monster visibly pops in before the portal has anything on screen yet.
+const _SPAWN_REVEAL_DELAY := 0.1
+
 const _ANIM_CLIP := {
 	Protocol.ANIM_JUMP: "Jump",
 	Protocol.ANIM_FALL: "Fall",
@@ -47,18 +53,39 @@ const _LOCOMOTION_CLIPS := ["Idle", "Walk", "Jump", "Fall", "Swim"]
 var _mesh_by_type:  Dictionary = {}  # unit_type (int) -> PackedScene
 var _slime_scenes: Array     = []  # index by (variant >> 6) & 0x3
 
+# NPC speech bubble: a single 2D BBCode RichTextLabel, screen-projected each
+# frame to sit chest-high above the NPC's body, shown whenever the server
+# relays a reply (Network.npc_speech). One node per NPC (not several stitched
+# together) so text wrapped in a pair of '*' (npc.json's convention for
+# keywords, e.g. "Would you like to *Trade*?") can just be colored inline via
+# BBCode instead of manually laying out separate labels side by side.
+const _NPC_SPEECH_HEIGHT     := 1.4  # body.position is ground/feet level (see _GROUND_RADIUS)
+const _NPC_SPEECH_JITTER     := 0.3  # random x/y offset so replies don't always land in the same spot
+const _NPC_SPEECH_HIDE_DELAY := 6.0
+const _NPC_SPEECH_COLOR      := Color.YELLOW
+const _NPC_HIGHLIGHT_COLOR   := Color(0.55, 0.8, 1.0)  # lightish blue
+const _NPC_SPEECH_FONT_SIZE  := 16
+
+@onready var _npc_speech_camera: Camera3D = $"../Camera3D"
+var _npc_speech_canvas: CanvasLayer
+
+var _npc_labels:  Dictionary = {}  # net_id (int) -> RichTextLabel
+var _npc_offsets: Dictionary = {}  # net_id (int) -> Vector3, world-space offset above the body
+var _npc_active:  Dictionary = {}  # net_id (int) -> bool, true while the reply hasn't timed out yet
+var _npc_timers:  Dictionary = {}  # net_id (int) -> Timer
+
 # The server tracks position.y as the center of a physics sphere resting on
 # the ground (stone_gaze/src/systems/physics.cpp: terrain_surface = sample_floor
 # (...) + rb.radius, applied identically whether grounded, jumping, falling, or
 # swimming) — so the Y it sends is always ground_height + this radius, never
 # literal feet height. Values match monster_types.json's per-type "radius"
-# field (default 0.5, same as RigidBody's default used for the player, which
-# has no override in spawn.cpp). Subtracted unconditionally in every anim
+# field (default 0.5); the player's comes from spawn.cpp's RigidBody .radius
+# (0.4). Wall/object tops use the same top + radius offset. Subtracted unconditionally in every anim
 # state below, since the server's offset is constant across all of them —
 # conditioning this on Ground state (as an earlier attempt did) reintroduces
 # exactly the pop this avoids, right at the Ground/Jump boundary.
 const _GROUND_RADIUS := {
-	Protocol.UNIT_PLAYER:    0.5,
+	Protocol.UNIT_PLAYER:    0.4,
 	Protocol.UNIT_MINOTAUR:  0.5,
 	Protocol.UNIT_MINO_MAGE: 0.5,
 	Protocol.UNIT_SLIME:     0.5,
@@ -95,7 +122,7 @@ func _ready() -> void:
 	_mesh_by_type[Protocol.UNIT_MINOTAUR]  = load("res://assets/minotaur.obj")
 	_mesh_by_type[Protocol.UNIT_MINO_MAGE] = load("res://assets/stone_man.glb")
 	_mesh_by_type[Protocol.UNIT_SNAKE]     = load("res://assets/snake.glb")
-	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/monsters/Goblin.tscn")
+	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/meshes/goblin01.glb")
 	_mesh_by_type[Protocol.UNIT_DEMON]     = load("res://assets/monsters/low_poly_demon_man_v_3.tscn")
 	_mesh_by_type[Protocol.UNIT_NPC]       = load("res://assets/npcs/Feras.tscn")
 	_slime_scenes = [
@@ -111,9 +138,13 @@ func _ready() -> void:
 	Network.xp_gained.connect(_on_xp_gained)
 	Network.level_up.connect(_on_level_up)
 	Network.action_ok.connect(_on_action_ok)
+	Network.npc_speech.connect(_on_npc_speech)
 	GameState.first_person_changed.connect(set_first_person)
 	_build_xp_materials()
 	call_deferred(&"_prewarm_xp_shader")
+
+	_npc_speech_canvas = CanvasLayer.new()
+	add_child(_npc_speech_canvas)
 
 func _on_unit_destroyed(net_id: int) -> void:
 	if entities.has(net_id):
@@ -122,8 +153,66 @@ func _on_unit_destroyed(net_id: int) -> void:
 		_targets.erase(net_id)
 		_anim_players.erase(net_id)
 		_current_anim.erase(net_id)
+		if _npc_labels.has(net_id):
+			_npc_labels[net_id].queue_free()  # also frees its child Timer, see _on_npc_speech
+		_npc_labels.erase(net_id)
+		_npc_offsets.erase(net_id)
+		_npc_active.erase(net_id)
+		_npc_timers.erase(net_id)
+
+func _on_npc_speech(npc_net_id: int, _target_player_net_id: int, text: String) -> void:
+	if not entities.has(npc_net_id):
+		return
+	var label := _npc_labels.get(npc_net_id) as RichTextLabel
+	if label == null:
+		label = RichTextLabel.new()
+		label.bbcode_enabled = true
+		label.fit_content = true
+		label.scroll_active = false
+		label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		label.add_theme_font_size_override("normal_font_size", _NPC_SPEECH_FONT_SIZE)
+		label.add_theme_color_override("default_color", _NPC_SPEECH_COLOR)
+		label.add_theme_constant_override("outline_size", 3)
+		label.add_theme_color_override("font_outline_color", Color.BLACK)
+		label.visible = false
+		_npc_speech_canvas.add_child(label)
+		_npc_labels[npc_net_id] = label
+
+		var timer := Timer.new()
+		timer.one_shot = true
+		timer.wait_time = _NPC_SPEECH_HIDE_DELAY
+		timer.timeout.connect(func(): _npc_active[npc_net_id] = false)
+		label.add_child(timer)
+		_npc_timers[npc_net_id] = timer
+
+	_npc_offsets[npc_net_id] = Vector3(randf_range(-_NPC_SPEECH_JITTER, _NPC_SPEECH_JITTER),
+		_NPC_SPEECH_HEIGHT + randf_range(-_NPC_SPEECH_JITTER, _NPC_SPEECH_JITTER), 0.0)
+	label.text = Protocol.text_to_bbcode(text, _NPC_HIGHLIGHT_COLOR)
+	label.reset_size()
+	_npc_active[npc_net_id] = true
+	(_npc_timers[npc_net_id] as Timer).start()
+
+# Screen-projects each active NPC label to sit above wherever its body
+# currently is, and hides it while its NPC is behind the camera (unproject
+# gives nonsense screen coordinates for points behind the viewer).
+func _update_npc_speech_labels() -> void:
+	for npc_id: int in _npc_labels:
+		var label: RichTextLabel = _npc_labels[npc_id]
+		var body: Node3D = entities.get(npc_id)
+		if body == null or not _npc_active.get(npc_id, false):
+			label.visible = false
+			continue
+		var world_pos: Vector3 = body.global_position + (_npc_offsets[npc_id] as Vector3)
+		if _npc_speech_camera.is_position_behind(world_pos):
+			label.visible = false
+			continue
+		label.visible = true
+		label.position = _npc_speech_camera.unproject_position(world_pos) - label.size * 0.5
 
 func _process(delta: float) -> void:
+	_update_npc_speech_labels()
 	var t := 1.0 - exp(-GameState.interp_rate * delta)
 	for net_id: int in _targets:
 		var body := entities.get(net_id) as StaticBody3D
@@ -262,6 +351,20 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _
 	entities[net_id] = body
 	_apply_variant(body, unit_type, variant)
 	_cache_anim_player(net_id, body)
+	if unit_type != Protocol.UNIT_PLAYER and unit_type != Protocol.UNIT_NPC:
+		_delay_monster_reveal(body)
+
+# Hides a freshly spawned monster's own meshes for a beat (see
+# _SPAWN_REVEAL_DELAY) — not the portal, which effects.gd shows immediately.
+func _delay_monster_reveal(body: Node3D) -> void:
+	var meshes := body.find_children("*", "MeshInstance3D", true, false)
+	for mi: MeshInstance3D in meshes:
+		mi.visible = false
+	get_tree().create_timer(_SPAWN_REVEAL_DELAY).timeout.connect(func():
+		for mi in meshes:
+			if is_instance_valid(mi):
+				mi.visible = true
+	)
 
 func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, anim_state: int) -> void:
 	var rot := rot_y + PI

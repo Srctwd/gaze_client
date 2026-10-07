@@ -24,18 +24,34 @@ const INTERACT_REQUEST   := 0x14
 const TALENT_SYNC        := 0x15
 const LEARN_TALENT_REQUEST := 0x16
 const FREE_AIM_SHOT        := 0x17
+const CHAT_SAY             := 0x18
+const PLAYER_CHAT          := 0x19
+const NPC_SPEECH           := 0x1A
+const DIALOG_OPTIONS       := 0x1B
+const EQUIP_BAG_TOGGLE_REQUEST := 0x1C
+const BAG_UNEQUIP_REQUEST      := 0x1D
+const BAG_SLOT_SWAP_REQUEST    := 0x1E
+const INSPECT_ITEM_REQUEST     := 0x1F
+const INSPECT_ITEM_RESPONSE    := 0x20
 
 # ── Gear slots (must match GearSlot enum in inventory.h) ───────────────────
 const SLOT_MAINHAND := 0
 const SLOT_OFFHAND  := 1
 const SLOT_HEADGEAR := 2
 const SLOT_ARMOR    := 3
+const SLOT_GLOVES   := 4
+const SLOT_BOOTS    := 5
+const SLOT_BAG      := 6
+const SLOT_NECKLACE := 7
+const SLOT_TRINKET  := 8
 const SLOT_SHEATH   := 9
+const SLOT_QUIVER   := 10
+const SLOT_POUCH    := 11
 
 # ── Item defs ──────────────────────────────────────────────────────────────
-# Loaded at runtime from res://item_types (the server's single source of
+# Loaded at runtime from res://item_types.json (the server's single source of
 # truth for item def ids) instead of being hardcoded here — see _load_item_types.
-var item_defs: Dictionary = {}       # id (int) -> {name, slots, style, damage, speed}
+var item_defs: Dictionary = {}       # id (int) -> {name, slots, attack_style, damage, attack_speed_mult, two_handed, bag_capacity, container_category, max_stack, ammo_category, size, break_chance}
 var item_id_by_name: Dictionary = {} # name (String) -> id
 var item_name_by_id: Dictionary = {} # id (int) -> name
 
@@ -88,35 +104,46 @@ var _item_prefab_cache: Dictionary = {}
 # field, cached so effects.gd doesn't instantiate a whole ItemPrefab per shot.
 var _item_projectile_cache: Dictionary = {}
 
-# Parses res://item_types, the shared item def table also read by the server
-# (src/systems/item_types.cpp). Adding a new server-side item requires no
-# client changes here — only authoring res://assets/items/<Name>.tscn in the
-# editor (see get_item_prefab).
+# Parses res://item_types.json, the shared item def table also read by the server
+# (src/systems/item_types.cpp) — a JSON array of objects, not the old line-
+# based format. Adding a new server-side item requires no client changes
+# here — only authoring res://assets/items/<Name>.tscn in the editor (see
+# get_item_prefab).
 
 func _load_item_types() -> void:
-	var f := FileAccess.open("res://item_types", FileAccess.READ)
+	var f := FileAccess.open("res://item_types.json", FileAccess.READ)
 	if f == null:
-		push_error("Protocol: failed to open res://item_types")
+		push_error("Protocol: failed to open res://item_types.json")
 		return
-	while not f.eof_reached():
-		var line := f.get_line().strip_edges()
-		if line.is_empty() or line.begins_with("#"):
+	var text := f.get_as_text()
+	f.close()
+
+	var parsed: Variant = JSON.parse_string(text)
+	if not (parsed is Array):
+		push_error("Protocol: res://item_types.json is not a JSON array")
+		return
+
+	for entry: Dictionary in parsed:
+		var id: int = entry.get("id", -1)
+		var item_name: String = entry.get("name", "")
+		if id < 0 or item_name.is_empty():
 			continue
-		var fields: Array = line.split(" ", false)
-		if fields.size() < 6:
-			continue
-		var id := int(fields[0])
-		var item_name: String = fields[1]
 		item_defs[id] = {
-			"name":   item_name,
-			"slots":  fields[2].split(","),
-			"style":  fields[3],
-			"damage": float(fields[4]),
-			"speed":  float(fields[5]),
+			"name":              item_name,
+			"slots":             entry.get("slots", []),
+			"attack_style":      entry.get("attack_style", "Melee"),
+			"damage":            float(entry.get("damage", 0.0)),
+			"attack_speed_mult": float(entry.get("attack_speed_mult", 1.0)),
+			"two_handed":        entry.get("two_handed", false),
+			"bag_capacity":      int(entry.get("bag_capacity", 0)),
+			"container_category": entry.get("container_category", "None"),
+			"max_stack":         int(entry.get("max_stack", 1)),
+			"ammo_category":     entry.get("ammo_category", ""),
+			"size":              entry.get("size", "Small"),
+			"break_chance":      float(entry.get("break_chance", 0.0)),
 		}
 		item_id_by_name[item_name] = id
 		item_name_by_id[id] = item_name
-	f.close()
 
 func item_id(item_name: String) -> int:
 	return item_id_by_name.get(item_name, -1)
@@ -229,3 +256,76 @@ static func pkt_slot_swap(slot_a: int, slot_b: int) -> PackedByteArray:
 	pkt[1] = slot_a
 	pkt[2] = slot_b
 	return pkt
+
+# (no payload) — server always moves MainHand's bag into the dedicated Bag slot.
+static func pkt_equip_bag_toggle() -> PackedByteArray:
+	var pkt := PackedByteArray()
+	pkt.resize(1)
+	pkt[0] = EQUIP_BAG_TOGGLE_REQUEST
+	return pkt
+
+# (no payload) — server always moves the Bag slot's bag back into MainHand.
+static func pkt_bag_unequip() -> PackedByteArray:
+	var pkt := PackedByteArray()
+	pkt.resize(1)
+	pkt[0] = BAG_UNEQUIP_REQUEST
+	return pkt
+
+# bag_slot is 0-8 (keys 1-9) — always the Bag-slot bag's own contents, never
+# one currently held in MainHand/OffHand.
+static func pkt_bag_slot_swap(bag_slot: int) -> PackedByteArray:
+	var pkt := PackedByteArray()
+	pkt.resize(2)
+	pkt[0] = BAG_SLOT_SWAP_REQUEST
+	pkt[1] = bag_slot
+	return pkt
+
+# gear_slot is a GearSlot index (e.g. SLOT_BAG/SLOT_QUIVER/SLOT_POUCH) —
+# read-only, fires instantly server-side (doesn't cost an action slot).
+static func pkt_inspect_item(gear_slot: int) -> PackedByteArray:
+	var pkt := PackedByteArray()
+	pkt.resize(2)
+	pkt[0] = INSPECT_ITEM_REQUEST
+	pkt[1] = gear_slot
+	return pkt
+
+static func pkt_chat_say(text: String) -> PackedByteArray:
+	var text_bytes := text.to_utf8_buffer()
+	var pkt := PackedByteArray()
+	pkt.resize(2 + text_bytes.size())
+	pkt[0] = CHAT_SAY
+	pkt[1] = text_bytes.size()
+	for i in text_bytes.size():
+		pkt[2 + i] = text_bytes[i]
+	return pkt
+
+# ── Chat/dialog text markup ────────────────────────────────────────────────
+# Shared by chat_input.gd's own "say" label and entity_manager.gd's NPC
+# speech bubbles, so both render npc.json's keyword convention identically
+# (e.g. "Would you like to *Trade*?").
+
+# Splits text on '*' pairs so odd-indexed segments ("*Trade*") can be drawn
+# highlighted. Segments alternate plain/emphasis starting with plain; an
+# unpaired trailing '*' just ends up emphasized like any other segment — not
+# worth special-casing for dialog text that's always author-controlled.
+static func split_emphasis(text: String) -> Array:
+	var parts := text.split("*")
+	var segments: Array = []
+	for i in parts.size():
+		if not parts[i].is_empty():
+			segments.append({text = parts[i], emphasis = (i % 2) == 1})
+	return segments
+
+# Renders `text` as BBCode for a RichTextLabel, coloring emphasized segments
+# with highlight_color (everything else is left to the label's own default
+# text color). BBCode escaping is limited to '[' — chat/dialog text isn't
+# run through any other markup engine downstream.
+static func text_to_bbcode(text: String, highlight_color: Color) -> String:
+	var bb := ""
+	for seg: Dictionary in split_emphasis(text):
+		var escaped: String = (seg.text as String).replace("[", "[lb]")
+		if seg.emphasis:
+			bb += "[color=#%s]%s[/color]" % [highlight_color.to_html(false), escaped]
+		else:
+			bb += escaped
+	return bb

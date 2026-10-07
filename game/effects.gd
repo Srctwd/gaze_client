@@ -2,15 +2,55 @@ extends Node
 
 const _FLAME_PARTICLES_SCENE := preload("res://assets/effects/flame_particles_3d.tscn")
 const _MELEE_EFFECT_SCENE := preload("res://assets/melee_effect.glb")
-const FreeAimProjectile := preload("res://game/free_aim_projectile.gd")
+# FreeAimProjectile itself is used below without a local alias — it's already
+# globally available via free_aim_projectile.gd's own `class_name`.
+
+# Prefers a hand-authored res://assets/effects/portal.tscn (wrapping the raw
+# glb with a Marker3D marking its effective center) over the raw glb itself —
+# loaded lazily, not preloaded, since portal.tscn may not exist.
+const _PORTAL_GLB_PATH  := "res://assets/effects/portal.glb"
+const _PORTAL_TSCN_PATH := "res://assets/effects/portal.tscn"
+var _portal_scene: PackedScene
+
+# The server's AOI resends SpawnUnit for every pre-existing entity in range
+# the tick after login (see sessions.cpp: sessions_login) — indistinguishable
+# at the protocol level from a genuine new spawn. Suppressing the portal for
+# a short window after login_ok avoids a portal flash for every monster
+# already in the world when you log in.
+const _LOGIN_SYNC_SUPPRESS := 1.5
+var _login_sync_active := false
+var _login_sync_timer: Timer
 
 @onready var _entity_manager: Node = $"../EntityManager"
 
 var equipment: Node = null  # set externally; used to look up the attacker's mainhand item
 
+# Actual monsters only — not the player (UNIT_PLAYER) or dialog NPCs (UNIT_NPC),
+# which spawn in via the same SpawnUnit message but shouldn't get a portal.
+const _MONSTER_TYPES := {
+	Protocol.UNIT_MINOTAUR:  true,
+	Protocol.UNIT_MINO_MAGE: true,
+	Protocol.UNIT_SLIME:     true,
+	Protocol.UNIT_SNAKE:     true,
+	Protocol.UNIT_GOBLIN:    true,
+	Protocol.UNIT_DEMON:     true,
+}
+const _PORTAL_FALLBACK_DURATION := 1.5  # used only if the glb has no AnimationPlayer/clip to time off of
+
 func _ready() -> void:
 	Network.action_ok.connect(_on_action_ok)
 	Network.free_aim_shot.connect(_on_free_aim_shot)
+	Network.unit_spawned.connect(_on_unit_spawned)
+	Network.login_ok.connect(_on_login_ok)
+
+	_login_sync_timer = Timer.new()
+	_login_sync_timer.one_shot = true
+	_login_sync_timer.timeout.connect(func(): _login_sync_active = false)
+	add_child(_login_sync_timer)
+
+func _on_login_ok(_net_id: int) -> void:
+	_login_sync_active = true
+	_login_sync_timer.start(_LOGIN_SYNC_SUPPRESS)
 
 # Cosmetic approximation, independent of the server: the server resolves the
 # actual hit itself (projectile_system's free-flight sweep) but nothing syncs
@@ -249,3 +289,75 @@ func _flash(target: Node3D, mat: Material) -> void:
 	for mi in meshes:
 		if is_instance_valid(mi):
 			mi.material_overlay = null
+
+func _portal_prefab() -> PackedScene:
+	if _portal_scene == null:
+		var path := _PORTAL_TSCN_PATH if ResourceLoader.exists(_PORTAL_TSCN_PATH) else _PORTAL_GLB_PATH
+		_portal_scene = load(path)
+	return _portal_scene
+
+func _on_unit_spawned(net_id: int, unit_type: int, _variant: int, _pos: Vector3, _anim_state: int) -> void:
+	if _login_sync_active or not _MONSTER_TYPES.has(unit_type):
+		return
+	# Deferred so entity_manager.gd (also listening to Network.unit_spawned) has
+	# already created the monster's body — both handlers run synchronously within
+	# the same emit(), so by the time a deferred call executes, entities.get(net_id)
+	# is populated regardless of which listener was connected first.
+	call_deferred(&"_spawn_portal_effect", net_id)
+
+func _spawn_portal_effect(net_id: int) -> void:
+	var body: Node3D = _entity_manager.entities.get(net_id)
+	if body == null:
+		return
+	var portal := _portal_prefab().instantiate() as Node3D
+	_fix_portal_transparency(portal)
+	get_parent().add_child(portal)
+
+	# portal.tscn's Marker3D marks the prefab's effective center/ground point —
+	# align that to the monster instead of assuming the raw glb's own origin
+	# already sits there. Matched by type (default node name), not a specific
+	# name, so however the marker ends up named in the editor still works.
+	var markers := portal.find_children("*", "Marker3D", true, false)
+	var spawn_point := markers[0] as Node3D if not markers.is_empty() else null
+	if spawn_point != null:
+		portal.global_position += body.global_position - spawn_point.global_position
+	else:
+		portal.global_position = body.global_position
+
+	var duration := _play_portal_once(portal)
+	await get_tree().create_timer(duration).timeout
+	if is_instance_valid(portal):
+		portal.queue_free()
+
+# portal.glb's material imports as alpha-BLEND, which Godot sorts against other
+# transparent draws object-by-object (painter's algorithm) rather than per
+# pixel — so it always draws over the monster it's meant to overlap/enclose,
+# regardless of which is actually nearer the camera. ALPHA_HASH keeps the
+# translucent look (dithered instead of smoothly blended) but writes/tests
+# real per-pixel depth like an opaque material, so it interleaves correctly
+# with the monster's opaque mesh instead of always winning.
+func _fix_portal_transparency(node: Node3D) -> void:
+	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var mat := mi.get_active_material(i) as BaseMaterial3D
+			if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_ALPHA:
+				continue
+			var dup := mat.duplicate() as BaseMaterial3D
+			dup.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_HASH
+			mi.set_surface_override_material(i, dup)
+
+# Plays the prefab's own animation once — not looped, unlike _autoplay_animations'
+# projectile clips, since this is a one-shot spawn effect — and reports its
+# length so the caller knows how long to keep the node around before freeing it.
+func _play_portal_once(node: Node3D) -> float:
+	for ap in node.find_children("*", "AnimationPlayer", true, false):
+		var player := ap as AnimationPlayer
+		var anims := player.get_animation_list()
+		if anims.is_empty():
+			continue
+		var anim := player.get_animation(anims[0])
+		if anim:
+			anim.loop_mode = Animation.LOOP_NONE
+		player.play(anims[0])
+		return anim.length if anim else _PORTAL_FALLBACK_DURATION
+	return _PORTAL_FALLBACK_DURATION

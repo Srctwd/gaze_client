@@ -10,13 +10,17 @@ signal login_fail
 signal action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
 signal unit_destroyed(net_id: int)
 signal vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana: float)
-signal floor_item_spawned(net_id: int, def_id: int, pos: Vector3)
+signal floor_item_spawned(net_id: int, def_id: int, quantity: int, pos: Vector3, contents: Array)
 signal floor_item_destroyed(net_id: int)
-signal equip_synced(net_id: int, slot: int, item_def_id: int)
+signal equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int)
 signal xp_gained(monster_net_id: int, player_ids: Array)
 signal level_up(net_id: int, new_level: int)
 signal talent_synced(points_available: int, learned: Array)
 signal free_aim_shot(actor_id: int, origin: Vector3, yaw: float, pitch: float, speed: float, max_range: float, effect: int)
+signal player_chat(player_net_id: int, text: String)
+signal npc_speech(npc_net_id: int, target_player_net_id: int, text: String)
+signal dialog_options(npc_net_id: int, options: Array)
+signal item_inspected(container_def_id: int, contents: Array)
 
 const HOST     = "stonegaze.link"
 const PORT     = 7777
@@ -87,13 +91,16 @@ func _parse(data: PackedByteArray) -> void:
 			vital_update.emit(data.decode_u32(1),
 				data.decode_float(5), data.decode_float(9),
 				data.decode_float(13), data.decode_float(17))
-		0x0D: # SpawnFloorItem: net_id(u32) def_id(u8) x y z (f32×3)
-			floor_item_spawned.emit(data.decode_u32(1), data[5],
-				Vector3(data.decode_float(6), data.decode_float(10), data.decode_float(14)))
+		0x0D: # SpawnFloorItem: net_id(u32) def_id(u8) quantity(u8) x y z (f32×3) [item_def_id(u8) quantity(u8)]×9 (container contents, def_id=0=empty)
+			var _contents: Array = []
+			for i in 9:
+				_contents.append({def_id = data[19 + i * 2], quantity = data[19 + i * 2 + 1]})
+			floor_item_spawned.emit(data.decode_u32(1), data[5], data[6],
+				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)), _contents)
 		0x0E: # DestroyFloorItem: net_id(u32)
 			floor_item_destroyed.emit(data.decode_u32(1))
-		0x10: # EquipSync: net_id(u32) slot(u8) item_def_id(u8)
-			equip_synced.emit(data.decode_u32(1), data[5], data[6])
+		0x10: # EquipSync: net_id(u32) slot(u8) item_def_id(u8) quantity(u8, 1 if not stackable)
+			equip_synced.emit(data.decode_u32(1), data[5], data[6], data[7])
 		0x12: # LevelUp: player_net_id(u32) new_level(u32)
 			level_up.emit(data.decode_u32(1), data.decode_u32(5))
 		0x11: # XpGain: monster_net_id(u32) count(u8) [player_net_id(u32)×count]
@@ -115,6 +122,30 @@ func _parse(data: PackedByteArray) -> void:
 				Vector3(data.decode_float(5), data.decode_float(9), data.decode_float(13)),
 				data.decode_float(17), data.decode_float(21), data.decode_float(25), data.decode_float(29),
 				data[33])
+		0x19: # PlayerChat: player_net_id(u32) text(str: len(u8) + bytes)
+			var _pc_len := data[5]
+			player_chat.emit(data.decode_u32(1),
+				data.slice(6, 6 + _pc_len).get_string_from_utf8())
+		0x1A: # NpcSpeech: npc_net_id(u32) target_player_net_id(u32) text(str)
+			var _ns_len := data[9]
+			npc_speech.emit(data.decode_u32(1), data.decode_u32(5),
+				data.slice(10, 10 + _ns_len).get_string_from_utf8())
+		0x1B: # DialogOptions: npc_net_id(u32) count(u8) [option(str)]×count
+			var _do_npc_id := data.decode_u32(1)
+			var _do_count  := data[5]
+			var _do_opts: Array = []
+			var _do_offset := 6
+			for i in _do_count:
+				var _opt_len := data[_do_offset]
+				_do_opts.append(data.slice(_do_offset + 1, _do_offset + 1 + _opt_len).get_string_from_utf8())
+				_do_offset += 1 + _opt_len
+			dialog_options.emit(_do_npc_id, _do_opts)
+		0x20: # InspectItemResponse: container_def_id(u8) [item_def_id(u8) quantity(u8)]×9 — owning peer only
+			var _container_def_id := data[1]
+			var _inspect_contents: Array = []
+			for i in 9:
+				_inspect_contents.append({def_id = data[2 + i * 2], quantity = data[2 + i * 2 + 1]})
+			item_inspected.emit(_container_def_id, _inspect_contents)
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

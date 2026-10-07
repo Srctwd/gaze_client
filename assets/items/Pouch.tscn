@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://6dsh3jnlvv2n"]
+
+[ext_resource type="PackedScene" uid="uid://b8vhkccka8u7l" path="res://assets/meshes/pouch.glb" id="1_hfyj5"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2_prefab"]
+
+[node name="pouch" unique_id=180643831 instance=ExtResource("1_hfyj5")]
+transform = Transform3D(0.105, 0, 0, 0, 0.105, 0, 0, 0, 0.105, 0, 0, 0)
+script = ExtResource("2_prefab")
+
+[node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=744502378]
+transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, 0, 0, 0, 0.99999976, 0, 0.90409935, -0.4897698)

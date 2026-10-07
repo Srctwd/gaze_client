@@ -20,16 +20,16 @@ boot_splash/image="uid://b72y81ppltcvw"
 config/icon="res://icon.svg"
 config/run/main_scene="res://main.tscn"
 
+[audio]
+
+driver/enable_input=true
+
 [autoload]
 
 Config="*res://config.gd"
 GameState="*res://game_state.gd"
 Network="*res://net/network.gd"
 Protocol="*res://net/protocol.gd"
-
-[audio]
-
-driver/enable_input=true
 
 [display]
 

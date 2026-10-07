@@ -19,6 +19,7 @@ const DEFAULT_PATH := "res://talents.json"
 #   {"type": "has", "node": int}
 #   {"type": "and"/"or", "children": Array[Requirement]}
 #   {"type": "sum", "group": String, "threshold": int}
+#   {"type": "stat", "name": String, "threshold": int}
 var talents: Array = []
 var by_id: Dictionary = {}  # node_id -> talent dict
 
@@ -74,6 +75,7 @@ func load(path: String = DEFAULT_PATH) -> bool:
 #   "SomeKey"                             -> {"type": "has", "node": id}
 #   {"and": [...]} / {"or": [...]}        -> {"type": "and"/"or", "children": [...]}
 #   {"sum": {"group": g, "threshold": n}} -> {"type": "sum", "group": g, "threshold": n}
+#   {"stat": {"name": s, "at_least": n}}  -> {"type": "stat", "name": s, "threshold": n}
 func _parse_requires(node, key_to_id: Dictionary) -> Dictionary:
 	if node == null:
 		return { "type": "none" }
@@ -98,6 +100,9 @@ func _parse_requires(node, key_to_id: Dictionary) -> Dictionary:
 		if node.has("sum"):
 			var s: Dictionary = node["sum"]
 			return { "type": "sum", "group": s.group, "threshold": int(s.threshold) }
+		if node.has("stat"):
+			var st: Dictionary = node["stat"]
+			return { "type": "stat", "name": st.name, "threshold": int(st.at_least) }
 
 	push_error("TalentTree: malformed requires node: " + str(node))
 	return { "type": "none" }
@@ -164,4 +169,8 @@ func requirement_met(req: Dictionary, learned: Dictionary) -> bool:
 				if req.group in t.tags and learned.has(t.id):
 					count += 1
 			return count >= req.threshold
+		"stat":
+			# Client doesn't track character stats — the server enforces this
+			# one when the learn request arrives.
+			return true
 	return false

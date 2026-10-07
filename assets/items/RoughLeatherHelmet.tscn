@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2"]
 
 [node name="RoughLeatherHelmet" unique_id=689160959 instance=ExtResource("1")]
+transform = Transform3D(0.335, 0, 0, 0, 0.335, 0, 0, 0, 0.335, 0, 0, 0)
 script = ExtResource("2")
 
 [node name="Icosphere" parent="." index="0" unique_id=1055345858]

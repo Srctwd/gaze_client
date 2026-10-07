@@ -47,7 +47,7 @@ alpha_curve = SubResource("CurveTexture_tyv0i")
 [sub_resource type="QuadMesh" id="QuadMesh_6yvt0"]
 
 [node name="Torch" type="Node3D" unique_id=1121564444]
-transform = Transform3D(0.4, 0, 0, 0, -1.7484556e-08, 0.4, 0, -0.4, -1.7484556e-08, 0, 0, 0)
+transform = Transform3D(0.145, 0, 0, 0, -6.3381513e-09, 0.145, 0, -0.145, -6.3381513e-09, 0, 0, 0)
 script = ExtResource("1_iahd2")
 
 [node name="torch01" parent="." unique_id=1152962316 instance=ExtResource("1_g8p30")]

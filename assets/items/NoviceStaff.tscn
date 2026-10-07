@@ -5,10 +5,9 @@
 [ext_resource type="PackedScene" uid="uid://dpbimbc81q5sa" path="res://assets/meshes/WoodenStaff01.glb" id="3_5pgw3"]
 
 [node name="NoviceStaff" type="Node3D" unique_id=135489644]
-transform = Transform3D(0.105, 0, 0, 0, 0.105, 0, 0, 0, 0.105, 0, 0, 0)
+transform = Transform3D(0.06, 0, 0, 0, 0.06, 0, 0, 0, 0.06, 0, 0, 0)
 script = ExtResource("1_4mgmo")
 projectile_scene = ExtResource("2_qp4kv")
-grip_point = NodePath("HandGrip")
 
 [node name="WoodenStaff01" parent="." unique_id=971176690 instance=ExtResource("3_5pgw3")]
 transform = Transform3D(1, 0, 0, 0, -1, 8.742278e-08, 0, -8.742278e-08, -1, 0, 0, 0)

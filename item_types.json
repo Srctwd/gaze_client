@@ -1,0 +1,131 @@
+[
+  {
+    "id": 1,
+    "name": "Stick",
+    "slots": ["MainHand", "OffHand", "Sheath"],
+    "attack_style": "Melee",
+    "damage": 5.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false
+  },
+  {
+    "id": 2,
+    "name": "RoughLeatherHelmet",
+    "slots": ["Headgear"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false
+  },
+  {
+    "id": 3,
+    "name": "WoodenBow",
+    "slots": ["MainHand", "OffHand", "Sheath"],
+    "attack_style": "FreeAimDistance",
+    "damage": 4.0,
+    "attack_speed_mult": 2.0,
+    "two_handed": true
+  },
+  {
+    "id": 4,
+    "name": "ThrowingDagger",
+    "slots": ["MainHand", "OffHand", "Sheath"],
+    "attack_style": "FreeAimDistance",
+    "damage": 3.0,
+    "attack_speed_mult": 0.7,
+    "two_handed": false,
+    "max_stack": 20,
+    "size": "Small",
+    "break_chance": 0.25
+  },
+  {
+    "id": 5,
+    "name": "NoviceStaff",
+    "slots": ["MainHand", "OffHand", "Sheath"],
+    "attack_style": "FreeAimDistance",
+    "damage": 3.0,
+    "attack_speed_mult": 1.2,
+    "two_handed": false
+  },
+  {
+    "id": 6,
+    "name": "Torch",
+    "slots": ["MainHand", "OffHand", "Sheath"],
+    "attack_style": "Melee",
+    "damage": 5.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false
+  },
+  {
+    "id": 7,
+    "name": "Bag",
+    "slots": ["MainHand", "OffHand", "Bag"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "bag_capacity": 3,
+    "container_category": "Bag",
+    "size": "Large"
+  },
+  {
+    "id": 8,
+    "name": "Quiver",
+    "slots": ["MainHand", "OffHand", "Quiver"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "bag_capacity": 6,
+    "container_category": "Quiver",
+    "size": "Small"
+  },
+  {
+    "id": 9,
+    "name": "Pouch",
+    "slots": ["MainHand", "OffHand", "Pouch"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "bag_capacity": 4,
+    "container_category": "Pouch",
+    "size": "Small"
+  },
+  {
+    "id": 10,
+    "name": "Arrow",
+    "slots": ["MainHand"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "max_stack": 12,
+    "size": "Small",
+    "ammo_category": "Arrow"
+  },
+  {
+    "id": 12,
+    "name": "FlamingArrow",
+    "slots": ["MainHand"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "max_stack": 12,
+    "size": "Small",
+    "ammo_category": "Arrow"
+  },
+  {
+    "id": 11,
+    "name": "SmallStone",
+    "slots": ["MainHand"],
+    "attack_style": "FreeAimDistance",
+    "damage": 2.0,
+    "attack_speed_mult": 0.7,
+    "two_handed": false,
+    "max_stack": 20,
+    "size": "Small",
+    "break_chance": 0.35
+  }
+]

@@ -9,6 +9,18 @@ const MAGIC_B      := 0x47574C33  # "GWL3" - adds a box-collider section (OBB wa
 # raw u8 monster id — not used on client either way, just read to advance
 # the cursor correctly.
 const MAGIC_G      := 0x47574C34
+# "GWL5" - identical to GWL4 except each water rect carries 1 extra trailing
+# field (is_waterfall: u8). Gameplay-wise this is still a normal flat
+# WaterRect placed exactly like any other (same x/z/width/depth/y); when set,
+# this client instead samples the terrain heightmap under the rect's
+# footprint to find the lowest point and renders a box volume from y down to
+# it, so it always reaches the ground however steep the slope is there.
+const MAGIC_F      := 0x47574C35
+# "GWL6" - identical to GWL5 except each wall record is followed by a u8
+# opening count and that many carved openings (6 floats each: x/y/z min/max
+# in the wall's local frame, y = 0 at the wall's base). Rendered by slicing
+# the wall into whatever solid boxes remain — see _carve_wall_pieces().
+const MAGIC_O      := 0x47574C36
 const WorldShaders  = preload("res://world/world_shaders.gd")
 
 # Preloaded so the exporter includes them (paths come from world.bin at runtime)
@@ -26,7 +38,7 @@ var world_ox    : float = 0.0
 var world_oz    : float = 0.0
 var _chunks     : Array = []
 var _static_objects : Array = []
-var _static_boxes   : Array = []  # OBB walls: {type, x, z, half_x, half_z, rot_y, height, y_offset}
+var _static_boxes   : Array = []  # OBB walls: {type, x, z, half_x, half_z, rot_y, height, y_offset, openings}
 var _water_rects    : Array = []
 var _biomes         : Array = []  # [{id, name, material, props[]}]
 var _prop_types     : Array = []
@@ -42,6 +54,8 @@ var _material      : Material
 var _mat_cave      : ShaderMaterial
 var _mat_cave_floor: ShaderMaterial
 var _fallback_scene        : PackedScene = null
+var _biome_mat_cache : Dictionary = {}  # biome id -> Material, shared by every streamed chunk
+var _prop_cache      : Dictionary = {}  # prop path -> PackedScene
 const _FALLBACK_PATH := "res://assets/fushi.glb"
 # Wall type id -> ShaderMaterial, built from wall_types.json (id, name, texture
 # path) rather than world.bin's own trailing wall-type table — that table is
@@ -68,7 +82,7 @@ func load(path: String) -> bool:
 	var first := f.get_32()
 	var static_offset: int
 	var box_offset: int = 0
-	if first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G:
+	if first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O:
 		chunk_cells   = f.get_32()
 		chunks_x      = f.get_32()
 		chunks_z      = f.get_32()
@@ -78,7 +92,7 @@ func load(path: String) -> bool:
 		static_offset = f.get_32()
 		origin_cx = raw_ocx if raw_ocx < 0x80000000 else int(raw_ocx) - 0x100000000
 		origin_cz = raw_ocz if raw_ocz < 0x80000000 else int(raw_ocz) - 0x100000000
-		if first == MAGIC_B or first == MAGIC_G:
+		if first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O:
 			box_offset = f.get_32()
 	else:
 		chunk_cells   = first
@@ -95,9 +109,11 @@ func load(path: String) -> bool:
 	var stride := chunk_cells + 1
 	var cells  := stride * stride
 
-	var has_biome := (first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G)
-	var has_prop_weight := (first == MAGIC_W or first == MAGIC_B or first == MAGIC_G)
-	var has_boxes := (first == MAGIC_B or first == MAGIC_G)
+	var has_biome := (first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O)
+	var has_prop_weight := (first == MAGIC_W or first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O)
+	var has_boxes := (first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O)
+	var has_waterfall := (first == MAGIC_F or first == MAGIC_O)
+	var has_openings := (first == MAGIC_O)
 
 	var types   : Array[int] = []
 	var biomes_ : Array[int] = []
@@ -158,10 +174,14 @@ func load(path: String) -> bool:
 	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
 		var wcount := f.get_32()
 		for _i in range(wcount):
-			_water_rects.append({
+			var wr := {
 				"x": f.get_float(), "z": f.get_float(),
-				"width": f.get_float(), "depth": f.get_float(), "y": f.get_float()
-			})
+				"width": f.get_float(), "depth": f.get_float(), "y": f.get_float(),
+				"is_waterfall": false,
+			}
+			if has_waterfall:
+				wr.is_waterfall = f.get_8() != 0
+			_water_rects.append(wr)
 
 	_biomes.clear()
 	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
@@ -182,7 +202,7 @@ func load(path: String) -> bool:
 			# of a raw u8 id — everything else about the biome record is
 			# unchanged from GWL3.
 			var bst
-			if first == MAGIC_G:
+			if first == MAGIC_G or first == MAGIC_F or first == MAGIC_O:
 				n = f.get_8(); bst = f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
 			else:
 				bst = f.get_8()
@@ -243,9 +263,18 @@ func load(path: String) -> bool:
 			var brot_y   := f.get_float()
 			var bheight  := f.get_float()
 			var byoffset := f.get_float()
+			var openings: Array = []
+			if has_openings:
+				var ocount := f.get_8()
+				for _oi in range(ocount):
+					openings.append({
+						"x_min": f.get_float(), "x_max": f.get_float(),
+						"y_min": f.get_float(), "y_max": f.get_float(),
+						"z_min": f.get_float(), "z_max": f.get_float(),
+					})
 			_static_boxes.append({ "type": btype, "x": bx, "z": bz,
 				"half_x": bhalf_x, "half_z": bhalf_z, "rot_y": brot_y, "height": bheight,
-				"y_offset": byoffset })
+				"y_offset": byoffset, "openings": openings })
 
 	f.close()
 
@@ -309,37 +338,86 @@ func _instantiate_static_type(id: int) -> Node3D:
 	return null
 
 
-func spawn_into(parent: Node3D) -> void:
-	var ox := world_ox
-	var oz := world_oz
-	var biome_mat_cache: Dictionary = {}
-	var prop_cache: Dictionary = {}
+# Terrain is streamed per chunk (see terrain.gd): build_chunk_arrays() does
+# the pure-data mesh/collider work and is safe to run on a worker thread;
+# make_chunk_node() turns its result into nodes on the main thread. Only the
+# non-terrain content below (static objects, walls, water, placed props) is
+# spawned up front — it's small, and gameplay code (is_in_water,
+# nearest_static_object) reads it world-wide anyway.
+func chunk_coords_at(wx: float, wz: float) -> Vector2i:
+	var size := chunk_cells * cell_size
+	return Vector2i(floori((wx - world_ox) / size), floori((wz - world_oz) / size))
 
-	for i in range(_chunks.size()):
-		var cx := i % chunks_x
-		var cz := int(i / chunks_x)
-		var origin   := Vector3(ox + cx * chunk_cells * cell_size, 0.0, oz + cz * chunk_cells * cell_size)
-		var biome_id := _chunks[i].get("biome", 0) as int
 
-		var chunk_mat: Material
-		if _biomes.is_empty():
-			chunk_mat = _material
-		else:
-			if not biome_mat_cache.has(biome_id):
-				biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _biomes)
-			chunk_mat = biome_mat_cache[biome_id] as Material
+func chunk_index(c: Vector2i) -> int:
+	if c.x < 0 or c.y < 0 or c.x >= chunks_x or c.y >= chunks_z: return -1
+	return c.y * chunks_x + c.x
 
-		var floor_mi := _make_chunk(_chunks[i].h1, origin, chunk_mat)
-		floor_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-		parent.add_child(_with_collision(floor_mi))
-		if _chunks[i].type == 2:
-			var ceil_mi := _make_chunk(_chunks[i].h2, origin, _mat_cave)
-			ceil_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-			parent.add_child(_with_collision(ceil_mi))
-			parent.add_child(_with_collision(_make_chunk(_chunks[i].h3, origin, _mat_cave_floor)))
 
-		_scatter_biome_props(biome_id, origin, prop_cache, parent)
+# Worker-thread safe: only reads the (already stitched, never mutated again)
+# height arrays and returns fresh packed arrays — no nodes, resources or
+# server calls. Keys: "h1"/"h2"/"h3" -> mesh arrays (h2/h3 only for caves),
+# plus "h1_heightmap" -> PackedFloat32Array when the floor has no holes and
+# can use a cheap HeightMapShape3D instead of a trimesh collider.
+func build_chunk_arrays(i: int) -> Dictionary:
+	var chunk := _chunks[i] as Dictionary
+	var out := { "h1": _build_mesh_arrays(chunk.h1) }
+	if chunk.type == 2:
+		out["h2"] = _build_mesh_arrays(chunk.h2)
+		out["h3"] = _build_mesh_arrays(chunk.h3)
+	var h1: Array = chunk.h1
+	var hm := PackedFloat32Array(); hm.resize(h1.size())
+	var inv := 1.0 / cell_size
+	for j in range(h1.size()):
+		var h: float = h1[j]
+		if is_nan(h):
+			hm = PackedFloat32Array()
+			break
+		hm[j] = h * inv
+	if not hm.is_empty():
+		out["h1_heightmap"] = hm
+	return out
 
+
+# Main thread: meshes + colliders + scattered biome props for chunk `i`, all
+# under one Node3D so unloading the chunk is a single queue_free().
+func make_chunk_node(i: int, arrays: Dictionary) -> Node3D:
+	var cx := i % chunks_x
+	var cz := int(i / chunks_x)
+	var origin := Vector3(world_ox + cx * chunk_cells * cell_size, 0.0, world_oz + cz * chunk_cells * cell_size)
+	var biome_id := _chunks[i].get("biome", 0) as int
+
+	var chunk_mat: Material
+	if _biomes.is_empty():
+		chunk_mat = _material
+	else:
+		if not _biome_mat_cache.has(biome_id):
+			_biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _biomes)
+		chunk_mat = _biome_mat_cache[biome_id] as Material
+
+	var node := Node3D.new()
+	node.name = "Chunk_%d_%d" % [cx, cz]
+	var floor_mi := _make_chunk(arrays.h1, origin, chunk_mat)
+	floor_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	if arrays.has("h1_heightmap"):
+		node.add_child(_with_heightmap_collision(floor_mi, arrays.h1_heightmap))
+	else:
+		node.add_child(_with_collision(floor_mi))
+	if arrays.has("h2"):
+		var ceil_mi := _make_chunk(arrays.h2, origin, _mat_cave)
+		ceil_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+		node.add_child(_with_collision(ceil_mi))
+		node.add_child(_with_collision(_make_chunk(arrays.h3, origin, _mat_cave_floor)))
+
+	# Seeded per chunk so a chunk scatters the same props every time it
+	# streams back in, instead of reshuffling whenever the player returns.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(Vector2i(cx + origin_cx, cz + origin_cz))
+	_scatter_biome_props(biome_id, origin, _prop_cache, node, rng)
+	return node
+
+
+func spawn_static(parent: Node3D) -> void:
 	for obj in _static_objects:
 		var wy   := _get_height_at(obj.x, obj.z)
 		var id   := obj.type as int
@@ -357,14 +435,18 @@ func spawn_into(parent: Node3D) -> void:
 	for wb in _static_boxes:
 		var wy := _get_height_at(wb.x as float, wb.z as float)
 		if is_nan(wy): wy = 0.0
-		parent.add_child(_with_collision(_make_wall_box(wb, wy)))
+		for piece in _carve_wall_pieces(wb):
+			parent.add_child(_with_collision(_make_wall_box(wb, piece, wy)))
 
 	var water_mat := WorldShaders.water_mat()
 	for wr in _water_rects:
+		if wr.get("is_waterfall", false):
+			parent.add_child(_make_waterfall_volume(wr, water_mat))
+			continue
 		var plane := PlaneMesh.new()
+		var mi := MeshInstance3D.new()
 		plane.size = Vector2(wr.width as float, wr.depth as float)
 		plane.surface_set_material(0, water_mat)
-		var mi := MeshInstance3D.new()
 		mi.mesh     = plane
 		mi.position = Vector3(wr.x as float, wr.y as float, wr.z as float)
 		parent.add_child(mi)
@@ -374,9 +456,9 @@ func spawn_into(parent: Node3D) -> void:
 		var tidx  := pd["type_idx"] as int
 		if tidx < 0 or tidx >= _prop_types.size(): continue
 		var path  := _prop_types[tidx] as String
-		if not prop_cache.has(path):
-			prop_cache[path] = load(path) as PackedScene
-		var sc := prop_cache[path] as PackedScene
+		if not _prop_cache.has(path):
+			_prop_cache[path] = load(path) as PackedScene
+		var sc := _prop_cache[path] as PackedScene
 		if sc == null: continue
 		var inst := sc.instantiate() as Node3D
 		inst.position   = Vector3(pd["x"] as float, pd["y"] as float, pd["z"] as float)
@@ -385,23 +467,23 @@ func spawn_into(parent: Node3D) -> void:
 		parent.add_child(inst)
 
 
-func _randomize_prop_transform(inst: Node3D) -> void:
-	inst.rotation.y = randf() * TAU
-	var base := randf_range(_PROP_SCALE_MIN, _PROP_SCALE_MAX)
-	var wide := base * randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
-	var tall := base * randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
-	var deep := base * randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
+func _randomize_prop_transform(inst: Node3D, rng: RandomNumberGenerator) -> void:
+	inst.rotation.y = rng.randf() * TAU
+	var base := rng.randf_range(_PROP_SCALE_MIN, _PROP_SCALE_MAX)
+	var wide := base * rng.randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
+	var tall := base * rng.randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
+	var deep := base * rng.randf_range(1.0 - _PROP_STRETCH, 1.0 + _PROP_STRETCH)
 	inst.scale = Vector3(wide, tall, deep)
 
 
-func _pick_weighted_prop(bprops: Array, bweights: Array) -> String:
+func _pick_weighted_prop(bprops: Array, bweights: Array, rng: RandomNumberGenerator) -> String:
 	var total := 0.0
 	for w in bweights:
 		total += w as float
 	if total <= 0.0:
-		return bprops[randi() % bprops.size()] as String
+		return bprops[rng.randi() % bprops.size()] as String
 
-	var roll := randf() * total
+	var roll := rng.randf() * total
 	for i in range(bprops.size()):
 		roll -= bweights[i] as float
 		if roll <= 0.0:
@@ -409,7 +491,7 @@ func _pick_weighted_prop(bprops: Array, bweights: Array) -> String:
 	return bprops[bprops.size() - 1] as String
 
 
-func _scatter_biome_props(biome_id: int, origin: Vector3, prop_cache: Dictionary, parent: Node3D) -> void:
+func _scatter_biome_props(biome_id: int, origin: Vector3, prop_cache: Dictionary, parent: Node3D, rng: RandomNumberGenerator) -> void:
 	if not _biomes_by_id.has(biome_id):
 		return
 	var biome := _biomes_by_id[biome_id] as Dictionary
@@ -419,7 +501,7 @@ func _scatter_biome_props(biome_id: int, origin: Vector3, prop_cache: Dictionary
 	var bweights: Array = biome.get("prop_weights", [])
 
 	var chunk_size := chunk_cells * cell_size
-	var count := randi_range(_PROP_SCATTER_MIN, _PROP_SCATTER_MAX)
+	var count := rng.randi_range(_PROP_SCATTER_MIN, _PROP_SCATTER_MAX)
 
 	# Stratified jittered grid: one prop per cell so placements stay evenly
 	# spread and never land on top of each other, instead of pure random XZ.
@@ -432,15 +514,15 @@ func _scatter_biome_props(biome_id: int, origin: Vector3, prop_cache: Dictionary
 		var gx := idx % cols
 		var gz := int(idx / cols)
 
-		var prop_path := _pick_weighted_prop(bprops, bweights)
+		var prop_path := _pick_weighted_prop(bprops, bweights, rng)
 		if not prop_cache.has(prop_path):
 			prop_cache[prop_path] = load(prop_path) as PackedScene
 		var sc := prop_cache[prop_path] as PackedScene
 		if sc == null:
 			continue
 
-		var jitter_x := randf_range(-_PROP_CELL_JITTER, _PROP_CELL_JITTER) * cell_w
-		var jitter_z := randf_range(-_PROP_CELL_JITTER, _PROP_CELL_JITTER) * cell_h
+		var jitter_x := rng.randf_range(-_PROP_CELL_JITTER, _PROP_CELL_JITTER) * cell_w
+		var jitter_z := rng.randf_range(-_PROP_CELL_JITTER, _PROP_CELL_JITTER) * cell_h
 		var wx := origin.x + (gx + 0.5) * cell_w + jitter_x
 		var wz := origin.z + (gz + 0.5) * cell_h + jitter_z
 		var wy := _get_height_at(wx, wz)
@@ -449,7 +531,7 @@ func _scatter_biome_props(biome_id: int, origin: Vector3, prop_cache: Dictionary
 
 		var inst := sc.instantiate() as Node3D
 		inst.position = Vector3(wx, wy, wz)
-		_randomize_prop_transform(inst)
+		_randomize_prop_transform(inst, rng)
 		parent.add_child(inst)
 
 
@@ -501,6 +583,40 @@ func _get_height_at(wx: float, wz: float) -> float:
 		return h11 + (h01 - h11) * (1.0 - rx) + (h10 - h11) * (1.0 - rz)
 
 
+# A waterfall WaterRect is placed exactly like a normal lake (same flat
+# x/z/width/depth/y) — this is what makes it "always fit": instead of storing
+# a guessed drop height, we sample the real terrain heightmap across the
+# rect's own footprint to find how low the ground actually goes there, and
+# stretch a box down to it. Axis-aligned by design (no rotation), so this is
+# just a min() over a small sample grid, not a full terrain-following mesh.
+const _WATERFALL_SAMPLES := 5
+
+func _make_waterfall_volume(wr: Dictionary, mat: Material) -> MeshInstance3D:
+	var x      := wr.x as float
+	var z      := wr.z as float
+	var width  := wr.width as float
+	var depth  := wr.depth as float
+	var top_y  := wr.y as float
+
+	var min_y := top_y
+	for i in range(_WATERFALL_SAMPLES):
+		var sx := x - width * 0.5 + width * (float(i) / (_WATERFALL_SAMPLES - 1))
+		for j in range(_WATERFALL_SAMPLES):
+			var sz := z - depth * 0.5 + depth * (float(j) / (_WATERFALL_SAMPLES - 1))
+			var h := _get_height_at(sx, sz)
+			if not is_nan(h):
+				min_y = minf(min_y, h)
+
+	var drop := maxf(top_y - min_y, 0.1)
+	var box := BoxMesh.new()
+	box.size = Vector3(width, drop, depth)
+	box.surface_set_material(0, mat)
+	var mi := MeshInstance3D.new()
+	mi.mesh     = box
+	mi.position = Vector3(x, top_y - drop * 0.5, z)
+	return mi
+
+
 # Dedicated physics layer for terrain/wall colliders (see _with_collision) —
 # nothing else in the client sets collision_layer/collision_mask explicitly
 # today, so entity StaticBody3Ds (player/monster) stay on the untouched
@@ -540,6 +656,33 @@ func _with_collision(mesh_instance: MeshInstance3D) -> Node3D:
 	return body
 
 
+# Same as _with_collision(), but for a hole-free floor layer: a
+# HeightMapShape3D builds in well under a millisecond where the equivalent
+# trimesh takes ~13 ms, which matters now that chunks stream in mid-game.
+# The shape is centered on its own origin with 1-unit spacing, so it's
+# scaled uniformly by cell_size (heights were pre-divided by cell_size in
+# build_chunk_arrays to compensate) and shifted to the chunk's center.
+func _with_heightmap_collision(mesh_instance: MeshInstance3D, heights: PackedFloat32Array) -> Node3D:
+	var stride := chunk_cells + 1
+	var shape := HeightMapShape3D.new()
+	shape.map_width = stride
+	shape.map_depth = stride
+	shape.map_data  = heights
+	var body := StaticBody3D.new()
+	body.collision_layer = COLLISION_LAYER_WORLD
+	body.collision_mask  = 0
+	body.position = mesh_instance.position
+	mesh_instance.position = Vector3.ZERO
+	var half := chunk_cells * cell_size * 0.5
+	var cs := CollisionShape3D.new()
+	cs.shape    = shape
+	cs.position = Vector3(half, 0.0, half)
+	cs.scale    = Vector3.ONE * cell_size
+	body.add_child(cs)
+	body.add_child(mesh_instance)
+	return body
+
+
 # Static objects (trees/rocks) get a simple grounded cylinder collider sized
 # from the same radius/height already used for their visual scale, mirroring
 # how the server represents them (StaticCollider: a plain radius+height
@@ -567,33 +710,57 @@ func _with_cylinder_collision(node: Node3D, radius: float, height: float) -> Nod
 	return body
 
 
-func _make_chunk(h1: Array, origin: Vector3, mat: Material, flip_normals: bool = false) -> MeshInstance3D:
-	var st     := SurfaceTool.new()
+# Indexed grid mesh straight from a chunk's height layer — same vertices,
+# winding and smooth (area-weighted) normals SurfaceTool.generate_normals()
+# produced, but filled into packed arrays directly, which is ~2x faster and,
+# unlike SurfaceTool, fine to run off the main thread. Quads touching a NaN
+# height (holes, cave edges) are skipped; the NaN vertex itself is zeroed so
+# it can't poison the AABB, and is never referenced by an index.
+func _build_mesh_arrays(h1: Array, flip_normals: bool = false) -> Array:
 	var stride := chunk_cells + 1
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n      := stride * stride
+	var verts  := PackedVector3Array(); verts.resize(n)
+	var uvs    := PackedVector2Array(); uvs.resize(n)
+	var norms  := PackedVector3Array(); norms.resize(n)
+	var inv    := 1.0 / chunk_cells
+	for gz in range(stride):
+		for gx in range(stride):
+			var vi := gz * stride + gx
+			var h: float = h1[vi]
+			verts[vi] = Vector3(gx * cell_size, 0.0 if is_nan(h) else h, gz * cell_size)
+			uvs[vi]   = Vector2(gx * inv, gz * inv)
+	var idx := PackedInt32Array(); idx.resize(chunk_cells * chunk_cells * 6)
+	var k := 0
 	for gz in range(chunk_cells):
 		for gx in range(chunk_cells):
 			var tl := gz * stride + gx
-			if is_nan(h1[tl]) or is_nan(h1[tl+1]) or is_nan(h1[tl+stride]) or is_nan(h1[tl+stride+1]):
+			var tr := tl + 1; var bl := tl + stride; var br := bl + 1
+			if is_nan(h1[tl]) or is_nan(h1[tr]) or is_nan(h1[bl]) or is_nan(h1[br]):
 				continue
-			var v0 := Vector3(gx       * cell_size, h1[tl],          gz       * cell_size)
-			var v1 := Vector3((gx+1)   * cell_size, h1[tl+1],        gz       * cell_size)
-			var v2 := Vector3(gx       * cell_size, h1[tl+stride],   (gz+1)   * cell_size)
-			var v3 := Vector3((gx+1)   * cell_size, h1[tl+stride+1], (gz+1)   * cell_size)
-			var u0 := Vector2(float(gx)   / chunk_cells, float(gz)   / chunk_cells)
-			var u1 := Vector2(float(gx+1) / chunk_cells, float(gz)   / chunk_cells)
-			var u2 := Vector2(float(gx)   / chunk_cells, float(gz+1) / chunk_cells)
-			var u3 := Vector2(float(gx+1) / chunk_cells, float(gz+1) / chunk_cells)
-			st.set_uv(u0); st.add_vertex(v0)
-			st.set_uv(u1); st.add_vertex(v1)
-			st.set_uv(u2); st.add_vertex(v2)
-			st.set_uv(u1); st.add_vertex(v1)
-			st.set_uv(u3); st.add_vertex(v3)
-			st.set_uv(u2); st.add_vertex(v2)
-	st.generate_normals(flip_normals)
-	st.index()
-	var mesh := st.commit()
-	if mesh.get_surface_count() > 0:
+			idx[k] = tl; idx[k + 1] = tr; idx[k + 2] = bl
+			idx[k + 3] = tr; idx[k + 4] = br; idx[k + 5] = bl
+			k += 6
+			var v0 := verts[tl]; var v1 := verts[tr]; var v2 := verts[bl]; var v3 := verts[br]
+			var fa := (v2 - v0).cross(v1 - v0)
+			var fb := (v2 - v1).cross(v3 - v1)
+			norms[tl] += fa; norms[tr] += fa + fb; norms[bl] += fa + fb; norms[br] += fb
+	idx.resize(k)
+	var sgn := -1.0 if flip_normals else 1.0
+	for vi in range(n):
+		norms[vi] = norms[vi].normalized() * sgn
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_INDEX]  = idx
+	return arr
+
+
+func _make_chunk(arrays: Array, origin: Vector3, mat: Material) -> MeshInstance3D:
+	var mesh := ArrayMesh.new()
+	if not (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty():
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(0, mat)
 	var mi      := MeshInstance3D.new()
 	mi.mesh     = mesh
@@ -609,19 +776,63 @@ func _make_chunk(h1: Array, origin: Vector3, mat: Material, flip_normals: bool =
 # from world-space position/normal (triplanar), so a plain BoxMesh's own UVs
 # are irrelevant here — that's what keeps the texture at a consistent scale
 # and aligned to each face regardless of the box's size or yaw.
-func _make_wall_box(box: Dictionary, ground_y: float) -> MeshInstance3D:
-	var height   := box.height as float
+#
+# `piece` is one local-frame sub-box of the wall ({x0,x1,y0,y1,z0,z1}, x/z
+# pre-rotation, y = 0 at the wall's base) — the whole wall when it has no
+# openings, otherwise one of the solid pieces from _carve_wall_pieces().
+func _make_wall_box(box: Dictionary, piece: Dictionary, ground_y: float) -> MeshInstance3D:
 	var y_offset := box.get("y_offset", 0.0) as float
+	var rot_y    := box.rot_y as float
+	var px0 := piece.x0 as float; var px1 := piece.x1 as float
+	var py0 := piece.y0 as float; var py1 := piece.y1 as float
+	var pz0 := piece.z0 as float; var pz1 := piece.z1 as float
 	var mesh := BoxMesh.new()
-	mesh.size = Vector3((box.half_x as float) * 2.0, height, (box.half_z as float) * 2.0)
+	mesh.size = Vector3(px1 - px0, py1 - py0, pz1 - pz0)
 	var mat: ShaderMaterial = _wall_mats.get(box.type as int, _wall_mat_default)
 	mesh.surface_set_material(0, mat)
 	var mi := MeshInstance3D.new()
 	mi.mesh        = mesh
 	# Base sits at ground_y + y_offset (lets a wall float, e.g. act as a
-	# ceiling), box center is half its height above that — mirrors the
-	# server's top_y = terrain + y_offset + height (world.h/world.cpp).
-	mi.position    = Vector3(box.x as float, ground_y + y_offset + height * 0.5, box.z as float)
-	mi.rotation.y  = box.rot_y as float
+	# ceiling) — mirrors the server's top_y = terrain + y_offset + height
+	# (world.h/world.cpp). The piece's local center is rotated by the wall's
+	# yaw the same way Node3D.rotation.y rotates its own local axes.
+	var lx := (px0 + px1) * 0.5; var lz := (pz0 + pz1) * 0.5
+	var cr := cos(rot_y); var sr := sin(rot_y)
+	mi.position    = Vector3((box.x as float) + lx * cr + lz * sr,
+		ground_y + y_offset + (py0 + py1) * 0.5,
+		(box.z as float) - lx * sr + lz * cr)
+	mi.rotation.y  = rot_y
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 	return mi
+
+
+# Splits a wall into the solid local-frame boxes left after subtracting each
+# of its openings — the same AABB-minus-AABB "picture frame" slicing
+# world_editor's _carve_box_list() uses, so a window/door renders (and
+# collides, via _with_collision) as a real hole without a CSG boolean.
+func _carve_wall_pieces(box: Dictionary) -> Array:
+	var hx := box.half_x as float; var hz := box.half_z as float
+	var pieces: Array = [{ "x0": -hx, "x1": hx, "y0": 0.0, "y1": box.height as float, "z0": -hz, "z1": hz }]
+	for op: Dictionary in box.get("openings", []):
+		var ox0 := op.x_min as float; var ox1 := op.x_max as float
+		var oy0 := op.y_min as float; var oy1 := op.y_max as float
+		var oz0 := op.z_min as float; var oz1 := op.z_max as float
+		var result: Array = []
+		for b: Dictionary in pieces:
+			var bx0 := b.x0 as float; var bx1 := b.x1 as float
+			var by0 := b.y0 as float; var by1 := b.y1 as float
+			var bz0 := b.z0 as float; var bz1 := b.z1 as float
+			var ix0 := maxf(bx0, ox0); var ix1 := minf(bx1, ox1)
+			var iy0 := maxf(by0, oy0); var iy1 := minf(by1, oy1)
+			var iz0 := maxf(bz0, oz0); var iz1 := minf(bz1, oz1)
+			if ix0 >= ix1 or iy0 >= iy1 or iz0 >= iz1:
+				result.append(b)
+				continue
+			if ix0 > bx0: result.append({ "x0": bx0, "x1": ix0, "y0": by0, "y1": by1, "z0": bz0, "z1": bz1 })
+			if ix1 < bx1: result.append({ "x0": ix1, "x1": bx1, "y0": by0, "y1": by1, "z0": bz0, "z1": bz1 })
+			if iz0 > bz0: result.append({ "x0": ix0, "x1": ix1, "y0": by0, "y1": by1, "z0": bz0, "z1": iz0 })
+			if iz1 < bz1: result.append({ "x0": ix0, "x1": ix1, "y0": by0, "y1": by1, "z0": iz1, "z1": bz1 })
+			if iy0 > by0: result.append({ "x0": ix0, "x1": ix1, "y0": by0, "y1": iy0, "z0": iz0, "z1": iz1 })
+			if iy1 < by1: result.append({ "x0": ix0, "x1": ix1, "y0": iy1, "y1": by1, "z0": iz0, "z1": iz1 })
+		pieces = result
+	return pieces

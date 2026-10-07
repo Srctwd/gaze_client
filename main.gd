@@ -24,6 +24,7 @@ func _ready() -> void:
 	equipment = preload("res://game/equipment.gd").new()
 	add_child(equipment)
 	player_controller.set("floor_items", floor_items)
+	player_controller.set("equipment", equipment)
 
 	_effects.set("equipment", equipment)
 

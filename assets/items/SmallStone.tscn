@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://b06fmvrybmyvi"]
+
+[ext_resource type="PackedScene" uid="uid://mu6aey18dxld" path="res://assets/meshes/rock01.glb" id="1_4oi5s"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2_prefab"]
+[ext_resource type="PackedScene" uid="uid://cu1becqh1ynap" path="res://assets/projectiles/SmallStone.tscn" id="3_proj"]
+
+[node name="rock01" unique_id=446025941 instance=ExtResource("1_4oi5s")]
+transform = Transform3D(0.08, 0, 0, 0, 0.08, 0, 0, 0, 0.08, 0, 0, 0)
+script = ExtResource("2_prefab")
+projectile_scene = ExtResource("3_proj")
+
+[node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=710417960]
