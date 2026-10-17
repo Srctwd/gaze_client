@@ -1,7 +1,9 @@
 extends Node
 
 const _FLAME_PARTICLES_SCENE := preload("res://assets/effects/flame_particles_3d.tscn")
-const _MELEE_EFFECT_SCENE := preload("res://assets/melee_effect.glb")
+const _BLOOD_SPLATTER_SCENE := preload("res://assets/effects/blood_splatter.tscn")
+const _ARMOR_HIT_SCENE      := preload("res://assets/effects/armor_hit.tscn")
+const _DEF_HIT_SCENE        := preload("res://assets/effects/def_hit.tscn")
 # FreeAimProjectile itself is used below without a local alias — it's already
 # globally available via free_aim_projectile.gd's own `class_name`.
 
@@ -34,11 +36,14 @@ const _MONSTER_TYPES := {
 	Protocol.UNIT_SNAKE:     true,
 	Protocol.UNIT_GOBLIN:    true,
 	Protocol.UNIT_DEMON:     true,
+	Protocol.UNIT_RAT:       true,
+	Protocol.UNIT_VALKYRIE:  true,
 }
 const _PORTAL_FALLBACK_DURATION := 1.5  # used only if the glb has no AnimationPlayer/clip to time off of
 
 func _ready() -> void:
 	Network.action_ok.connect(_on_action_ok)
+	Network.unit_hit.connect(_on_unit_hit)
 	Network.free_aim_shot.connect(_on_free_aim_shot)
 	Network.unit_spawned.connect(_on_unit_spawned)
 	Network.login_ok.connect(_on_login_ok)
@@ -99,7 +104,7 @@ func _on_free_aim_shot(actor_id: int, origin: Vector3, yaw: float, pitch: float,
 	var actor_body := _entity_manager.entities.get(actor_id) as StaticBody3D
 	if actor_body != null:
 		exclude.append(actor_body.get_rid())
-	pivot.launch(dir, speed, max_range, exclude)
+	pivot.launch(dir, speed, max_range, exclude, actor_id)
 
 func _on_action_ok(actor_id: int, effect: int, target_id: int, action_type: int) -> void:
 	if target_id == 0:
@@ -108,9 +113,11 @@ func _on_action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
 	if target == null:
 		return
 
+	# Visuals only — the hit reaction itself (blood) comes from UnitHit, which
+	# the server sends once damage actually resolves. A melee swing shows
+	# nothing here.
 	if effect == Protocol.EFFECT_PROJECTILE and (action_type == Protocol.ACTION_ATTACK or action_type == Protocol.ACTION_SPELL):
 		var actor := _entity_manager.entities.get(actor_id) as Node3D
-		var flash_color := Color(0.0, 0.0, 0.0, 0.5) if action_type == Protocol.ACTION_ATTACK else Color(0.1, 0.2, 0.5, 0.5)
 		if actor != null:
 			var from := actor.global_position + Vector3(0, 0.7, 0)
 			var projectile_scene: PackedScene = null
@@ -120,11 +127,6 @@ func _on_action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
 				_spawn_weapon_projectile(projectile_scene, from, target)
 			else:
 				_spawn_orb_projectile(from, target)
-		else:
-			_flash_color(target, flash_color)
-	elif effect == Protocol.EFFECT_SWING and action_type == Protocol.ACTION_ATTACK:
-		_flash_color(target, Color(0.0, 0.0, 0.0, 0.5))
-		_spawn_melee_effect(_entity_manager.entities.get(actor_id) as Node3D, target)
 	elif action_type == Protocol.ACTION_SPELL:
 		if effect == Protocol.EFFECT_FLAME:
 			_spawn_flame_effect(target)
@@ -132,10 +134,52 @@ func _on_action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
 			var actor := _entity_manager.entities.get(actor_id) as Node3D
 			if actor != null:
 				_spawn_fireball_projectile(actor.global_position + Vector3(0, 0.7, 0), target)
-			else:
-				_flash_color(target, Color(1.0, 0.3, 0.0, 0.5))
-		else:
-			_flash_color(target, Color(0.1, 0.2, 0.5, 0.5))
+
+
+# The server sends no amounts, so this only says "it took damage" (blood) or
+# what stopped a hit that would have: armor soaking it all (armor_hit) or the
+# rest of Defense — def, block, evasion, resistances (def_hit). Hits that never
+# carried damage (how a hit lands slow, burning, ... on its own) count in
+# `absorbed` but neither `armored` nor `defended`, and show nothing.
+func _on_unit_hit(target_id: int, attacker_id: int, count: int, absorbed: int, armored: int, defended: int) -> void:
+	_stop_shot_at(attacker_id, target_id)
+	var target := _entity_manager.entities.get(target_id) as Node3D
+	if target == null:
+		return
+	var damaging := count - absorbed
+	if damaging > 0:
+		_spawn_hit_burst(_BLOOD_SPLATTER_SCENE, target, 1.0 + 0.25 * mini(damaging - 1, 3))
+	if armored > 0:
+		_spawn_hit_burst(_ARMOR_HIT_SCENE, target, 1.0 + 0.25 * mini(armored - 1, 3))
+	if defended > 0:
+		_spawn_hit_burst(_DEF_HIT_SCENE, target, 1.0 + 0.25 * mini(defended - 1, 3))
+
+# How far from the target a shot may still be when the server's UnitHit lands
+# and count as "the one that hit" — the client flight runs a little behind or
+# ahead of the server's. Beyond this the hit is something else (a DoT tick,
+# a melee swing) and in-flight shots are left alone.
+const _SHOT_HIT_SLACK := 2.5
+
+# Server-confirmed hit: removes attacker_id's in-flight free-aim shot nearest
+# the target, in case the client-side sweep (FreeAimProjectile) missed it
+# because the collision geometry differs from what the server used.
+func _stop_shot_at(attacker_id: int, target_id: int) -> void:
+	var target := _entity_manager.entities.get(target_id) as Node3D
+	if target == null:
+		return
+	var center := _body_center(target)
+	var best: Node3D = null
+	var best_d := _SHOT_HIT_SLACK
+	for node in get_tree().get_nodes_in_group(FreeAimProjectile.GROUP):
+		var shot := node as FreeAimProjectile
+		if shot == null or shot.shooter_id != attacker_id or shot.is_queued_for_deletion():
+			continue
+		var d := shot.global_position.distance_to(center)
+		if d < best_d:
+			best_d = d
+			best = shot
+	if best != null:
+		best.queue_free()
 
 # Imported glTF animations (e.g. a staff bolt's pulsing rotate/scale) don't
 # autoplay — Godot just leaves the AnimationPlayer sitting idle at rest pose.
@@ -191,7 +235,7 @@ func _spawn_weapon_projectile(scene: PackedScene, from: Vector3, target: Node3D)
 	_animate_projectile(node, from, target)
 
 func _spawn_fireball_projectile(from: Vector3, target: Node3D) -> void:
-	_animate_projectile(_build_fireball_orb(), from, target, Color(1.0, 0.3, 0.0, 0.5))
+	_animate_projectile(_build_fireball_orb(), from, target)
 
 func _build_fireball_orb() -> MeshInstance3D:
 	var sp := SphereMesh.new()
@@ -214,7 +258,7 @@ func _build_fireball_orb() -> MeshInstance3D:
 
 # Places `node` at `from`, adds it to the scene, and tweens it toward `target`
 # (tracking it live in case it moves), flashing and freeing on arrival.
-func _animate_projectile(node: Node3D, from: Vector3, target: Node3D, impact_color := Color(0.1, 0.2, 0.5, 0.5)) -> void:
+func _animate_projectile(node: Node3D, from: Vector3, target: Node3D) -> void:
 	node.position = from
 	get_parent().add_child(node)
 
@@ -234,32 +278,34 @@ func _animate_projectile(node: Node3D, from: Vector3, target: Node3D, impact_col
 			node.global_position = from.lerp(tgt.global_position + Vector3(0, 0.7, 0), t),
 		0.0, 1.0, travel)
 	tween.tween_callback(func():
-		var tgt := instance_from_id(target_id) as Node3D
-		if tgt != null and is_instance_valid(tgt):
-			_flash_color(tgt, impact_color)
 		if is_instance_valid(node):
 			node.queue_free()
 	)
 
-func _spawn_melee_effect(actor: Node3D, target: Node3D) -> void:
-	var fx := _MELEE_EFFECT_SCENE.instantiate() as Node3D
-	get_parent().add_child(fx)
-	fx.global_position = target.global_position + Vector3(0, 0.9, 0)
-	# Face the swing toward the attacker; without one (shouldn't normally
-	# happen for a melee hit) fall back to whatever rotation the model ships with.
-	if actor != null and not actor.global_position.is_equal_approx(target.global_position):
-		fx.look_at(actor.global_position + Vector3(0, 0.9, 0), Vector3.UP)
+# One-shot droplet prefab (see assets/effects/) fired from the middle of the
+# target's visible body. The prefab's own `amount` is the base droplet count;
+# `amount_scale` multiplies it (e.g. more blood for several hits in one tick).
+func _spawn_hit_burst(scene: PackedScene, target: Node3D, amount_scale := 1.0) -> void:
+	var p := scene.instantiate() as GPUParticles3D
+	p.amount = maxi(1, roundi(p.amount * amount_scale))
+	get_parent().add_child(p)
+	p.global_position = _body_center(target)
+	p.emitting = true
+	p.finished.connect(p.queue_free)
 
-	await get_tree().create_timer(0.2).timeout
-	if is_instance_valid(fx):
-		fx.queue_free()
-
-func _flash_color(target: Node3D, color: Color) -> void:
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = color
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_flash(target, mat)
+# World-space center of everything the target renders — monsters range from
+# rats to minotaurs, so a fixed height offset would miss most of them.
+func _body_center(target: Node3D) -> Vector3:
+	var box: AABB
+	var have := false
+	for node in target.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if not mi.visible:
+			continue
+		var b := mi.global_transform * mi.get_aabb()
+		box = b if not have else box.merge(b)
+		have = true
+	return box.get_center() if have else target.global_position + Vector3(0, 0.7, 0)
 
 func _spawn_flame_effect(target: Node3D) -> void:
 	var particles := _FLAME_PARTICLES_SCENE.instantiate() as GPUParticles3D
@@ -275,20 +321,6 @@ func _spawn_flame_effect(target: Node3D) -> void:
 	await get_tree().create_timer(particles.lifetime + 0.2).timeout
 	if is_instance_valid(particles):
 		particles.queue_free()
-
-func _flash(target: Node3D, mat: Material) -> void:
-	var meshes := target.find_children("*", "MeshInstance3D", true, false)
-	if meshes.is_empty():
-		return
-
-	for mi in meshes:
-		mi.material_overlay = mat
-
-	await get_tree().create_timer(0.2).timeout
-
-	for mi in meshes:
-		if is_instance_valid(mi):
-			mi.material_overlay = null
 
 func _portal_prefab() -> PackedScene:
 	if _portal_scene == null:

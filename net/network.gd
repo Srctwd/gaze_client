@@ -3,11 +3,12 @@ extends Node
 signal connected
 signal disconnected
 signal unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, anim_state: int)
-signal unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, anim_state: int)
+signal unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, pitch: float, anim_state: int)
 signal time_of_day(game_seconds: float)
 signal login_ok(net_id: int)
 signal login_fail
 signal action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
+signal unit_hit(target_id: int, attacker_id: int, count: int, absorbed: int, armored: int, defended: int)
 signal unit_destroyed(net_id: int)
 signal vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana: float)
 signal floor_item_spawned(net_id: int, def_id: int, quantity: int, pos: Vector3, contents: Array)
@@ -21,6 +22,7 @@ signal player_chat(player_net_id: int, text: String)
 signal npc_speech(npc_net_id: int, target_player_net_id: int, text: String)
 signal dialog_options(npc_net_id: int, options: Array)
 signal item_inspected(container_def_id: int, contents: Array)
+signal chest_result(chest_net_id: int, result: int)
 
 const HOST     = "stonegaze.link"
 const PORT     = 7777
@@ -28,6 +30,9 @@ const CHANNELS = 2
 
 var _host: ENetConnection
 var _peer: ENetPacketPeer
+# Set by logout() — the host only has one peer slot, so the fresh connection
+# can't be opened until the old one's disconnect has actually completed.
+var _reconnect_on_disconnect := false
 
 func _ready() -> void:
 	_host = ENetConnection.new()
@@ -47,8 +52,21 @@ func _process(_delta: float) -> void:
 			ENetConnection.EVENT_DISCONNECT:
 				_peer = null
 				disconnected.emit()
+				if _reconnect_on_disconnect:
+					_reconnect_on_disconnect = false
+					_peer = _host.connect_to_host(HOST, PORT, CHANNELS, 0)
 			ENetConnection.EVENT_RECEIVE:
 				_parse((result[1] as ENetPacketPeer).get_packet())
+
+# Drops the session: the server despawns the player on peer disconnect (see
+# sessions_disconnect in stone_gaze), then this reconnects so `connected`
+# brings the login screen back.
+func logout() -> void:
+	if not is_connected_to_server():
+		return
+	_reconnect_on_disconnect = true
+	_peer.peer_disconnect()
+	_host.flush()
 
 func send(data: PackedByteArray, channel: int = 0,
 		flags: int = ENetPacketPeer.FLAG_RELIABLE) -> void:
@@ -64,10 +82,11 @@ func _parse(data: PackedByteArray) -> void:
 		0x01: # SpawnUnit: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) anim_state(u8)
 			unit_spawned.emit(data.decode_u32(1), data[5], data[6],
 				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)), data[19])
-		0x02: # UnitPos: net_id(u32) unit_type(u8) variant(u8) x y z rot_y (f32×4) anim_state(u8)
+		0x02: # UnitPos: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) orient(u8) anim_state(u8)
+			var orient := Protocol.unpack_orient(data[19])
 			unit_pos.emit(data.decode_u32(1), data[5], data[6],
 				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)),
-				data.decode_float(19), data[23])
+				orient.x, orient.y, data[20])
 		0x04: # TimeOfDay: game_seconds(f32)
 			time_of_day.emit(data.decode_float(1))
 		0x06: # LoginResponse: status(u8) [net_id(u32)]
@@ -85,6 +104,8 @@ func _parse(data: PackedByteArray) -> void:
 			else:
 				for i in _count:
 					action_ok.emit(_actor, _effect, data.decode_u32(8 + i * 4), _atype)
+		0x21: # UnitHit: target(u32) attacker(u32, 0=unknown) count(u8) absorbed(u8) armored(u8) defended(u8) — no amounts, HP stays hidden
+			unit_hit.emit(data.decode_u32(1), data.decode_u32(5), data[9], data[10], data[11], data[12])
 		0x0B: # DestroyUnit: net_id(u32)
 			unit_destroyed.emit(data.decode_u32(1))
 		0x0C: # VitalUpdate: net_id(u32) hp max_hp mana max_mana (f32×4)
@@ -146,6 +167,8 @@ func _parse(data: PackedByteArray) -> void:
 			for i in 9:
 				_inspect_contents.append({def_id = data[2 + i * 2], quantity = data[2 + i * 2 + 1]})
 			item_inspected.emit(_container_def_id, _inspect_contents)
+		0x23: # ChestResult: chest_net_id(u32) result(u8) — requesting peer only
+			chest_result.emit(data.decode_u32(1), data[5])
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

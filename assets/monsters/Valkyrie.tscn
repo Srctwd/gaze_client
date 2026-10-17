@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/meshes/Valkyrie.glb" id="1_valk"]
+
+[node name="Valkyrie" instance=ExtResource("1_valk")]
+transform = Transform3D(1.9, 0, 0, 0, 1.9, 0, 0, 0, 1.9, 0, 0, 0)

@@ -19,6 +19,12 @@ const PITCH_MIN:         float = -1.4
 const PITCH_MAX:         float = -0.05
 const PITCH_FP_MIN:      float = -1.5
 const PITCH_FP_MAX:      float =  1.5
+# First-person eye vs world geometry: server collision is a sphere at the
+# feet, so on a sloping cave wall or under a low ceiling the head bone — and
+# the camera on it — can end up inside rock, and the near plane cuts it away.
+const COLLISION_LAYER_WORLD := 2      # matches WorldData.COLLISION_LAYER_WORLD
+const BODY_RADIUS:       float = 0.4  # server player sphere (keep in sync with _GROUND_RADIUS)
+const EYE_MARGIN:        float = 0.15 # kept between the eye and rock; > the near plane's half-size
 
 func _ready() -> void:
 	_hud = load("res://ui/hud.gd").new()
@@ -64,9 +70,45 @@ func follow_head(pos: Vector3) -> void:
 
 func _apply() -> void:
 	if first_person:
-		position = head_target if _has_head else target + Vector3(0, 1.7, 0)
-		look_at(position + Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)),
-				Vector3.UP)
+		var look := Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch))
+		position = _clear_eye(head_target if _has_head else target + Vector3(0, 1.7, 0), look)
+		look_at(position + look, Vector3.UP)
 	else:
 		position = target + Vector3(sin(yaw), -sin(pitch), cos(yaw)) * cos(pitch) * distance
 		look_at(target, Vector3.UP)
+
+
+# `eye`, pulled back so it stays EYE_MARGIN clear of world geometry, in three
+# rays: up the body's axis from its collision sphere centre (which the server
+# keeps out of rock) to eye height — a low ceiling lowers the eye; then from
+# there out to the head bone's offset — a wall in front pushes the eye back
+# without lowering it; then along the view direction. Rays, not shape casts,
+# because they also hit back faces — cave ceilings are trimeshes facing into
+# the rock, i.e. away from someone standing in the cave.
+func _clear_eye(eye: Vector3, look: Vector3) -> Vector3:
+	if not is_inside_tree():
+		return eye
+	var space := get_world_3d().direct_space_state
+	var from := target + Vector3(0, BODY_RADIUS, 0)
+	var axis := Vector3(target.x, maxf(eye.y, from.y), target.z)
+	var hit := _world_ray(space, from, axis + Vector3.UP * EYE_MARGIN)
+	if not hit.is_empty():
+		axis.y = maxf((hit.position as Vector3).y - EYE_MARGIN, from.y)
+	var head := Vector3(eye.x, axis.y, eye.z)
+	var out := head - axis
+	if out.length() > 0.001:
+		var dir := out.normalized()
+		hit = _world_ray(space, axis, head + dir * EYE_MARGIN)
+		if not hit.is_empty():
+			head = axis + dir * maxf(axis.distance_to(hit.position) - EYE_MARGIN, 0.0)
+	eye = head
+	var ahead := _world_ray(space, eye, eye + look * EYE_MARGIN)
+	if not ahead.is_empty():
+		eye = (ahead.position as Vector3) - look * EYE_MARGIN
+	return eye
+
+
+func _world_ray(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> Dictionary:
+	var q := PhysicsRayQueryParameters3D.create(from, to, COLLISION_LAYER_WORLD)
+	q.hit_back_faces = true
+	return space.intersect_ray(q)

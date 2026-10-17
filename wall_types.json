@@ -2,11 +2,57 @@
   {
     "id": 0,
     "name": "Stone Wall",
-    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg"
+    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 1.0
   },
   {
     "id": 1,
     "name": "Cave Wall",
-    "texture": "res://assets/cave_texture.jpg"
+    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 1.0
+  },
+  {
+    "id": 2,
+    "name": "Ladder",
+    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "climbable": true,
+    "illusory": false,
+    "jitter": 1.0
+  },
+  {
+    "id": 3,
+    "name": "Illusory Wall",
+    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "climbable": false,
+    "illusory": true,
+    "jitter": 1.0
+  },
+  {
+    "id": 4,
+    "name": "Vines",
+    "texture": "res://assets/textures/climbable_vine_wall.png",
+    "climbable": true,
+    "illusory": false,
+    "jitter": 0.0
+  },
+  {
+    "id": 5,
+    "name": "Marble",
+    "texture": "res://assets/textures/marble_wall.png",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 0.0
+  },
+  {
+    "id": 6,
+    "name": "Black Marble",
+    "texture": "res://assets/textures/black_marble_wall.png",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 0.0
   }
 ]

@@ -128,6 +128,7 @@ func _on_line_edit_gui_input(event: InputEvent) -> void:
 			and event.keycode == KEY_ESCAPE:
 		_stop_typing()
 		_label.visible = false
+		get_viewport().set_input_as_handled()  # don't let main.gd read it as logout
 
 func _stop_typing() -> void:
 	_typing = false

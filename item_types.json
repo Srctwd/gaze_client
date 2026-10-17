@@ -127,5 +127,15 @@
     "max_stack": 20,
     "size": "Small",
     "break_chance": 0.35
+  },
+  {
+    "id": 13,
+    "name": "Tunic",
+    "slots": ["BodyArmor"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "armor": 1
   }
 ]

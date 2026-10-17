@@ -3,4 +3,4 @@
 [ext_resource type="PackedScene" uid="uid://6s6fwtmkfjbi" path="res://assets/meshes/arrow.glb" id="1"]
 
 [node name="arrow" unique_id=1071717718 instance=ExtResource("1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4.278404)
+transform = Transform3D(0.105, 0, 0, 0, -0.10499999, 9.179391e-09, 0, -9.179391e-09, -0.10499999, 0, 0, -0.39936888)

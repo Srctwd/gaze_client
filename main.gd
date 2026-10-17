@@ -104,6 +104,10 @@ func _on_disconnected() -> void:
 func _on_login_ok(net_id: int) -> void:
 	login_ui.clear_error()
 	GameState.player_net_id = net_id
+	# Spawn facing a random way: spawn points (e.g. temple crypts) have no
+	# known front, and the server can't set it — the client sends its own
+	# yaw every input tick, so this is what the server ends up using.
+	camera.yaw = randf() * TAU
 	_reveal_gameplay()
 
 
@@ -133,6 +137,16 @@ func _on_unit_destroyed(net_id: int) -> void:
 	tween.tween_property(rect, "modulate:a", 1.0, 1.5).set_ease(Tween.EASE_IN)
 	tween.tween_callback(func(): character_ui.show_for_token(_token))
 
+# Reloading the scene throws away every entity, floor item, HUD state etc. the
+# session built up; Network (autoload) survives and reconnects, and the fresh
+# scene's `connected` handler brings the login screen back.
+func _logout() -> void:
+	Network.logout()
+	GameState.player_net_id = -1
+	GameState.chat_typing = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	get_tree().reload_current_scene()
+
 func _on_login_fail() -> void:
 	login_ui.visible = true
 	login_ui.show_error("Invalid credentials")
@@ -142,6 +156,12 @@ func _on_player_moved(_pos: Vector3) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		# Esc in game = log out. Captured mouse means no menu (talent tree,
+		# character select) is open; chat swallows its own Esc.
+		if event.keycode == KEY_ESCAPE and GameState.player_net_id != -1 \
+				and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not GameState.chat_typing:
+			_logout()
+			return
 		if event.keycode == KEY_F12:
 			var mode := DisplayServer.window_get_mode()
 			if mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:

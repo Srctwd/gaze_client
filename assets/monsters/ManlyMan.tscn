@@ -5,42 +5,56 @@
 [node name="low_poly_manly_man" unique_id=1293205761 instance=ExtResource("1_r7j4i")]
 transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0)
 
-[node name="BoneAttachment3D" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(208695743) index="1" unique_id=1850601423]
-transform = Transform3D(-0.9885714, -0.13549191, 0.06609346, 0.15075289, -0.8884983, 0.4334094, 4.917383e-07, 0.43841994, 0.89877, -1.1046395, 0.49968076, 0.38396072)
+[node name="Skeleton3D" parent="Armature" parent_id_path=PackedInt32Array(130635790) index="0" unique_id=208695743]
+bones/0/rotation = Quaternion(-0.0105062425, 0, 0, 0.9999448)
+bones/4/rotation = Quaternion(2.0908381e-07, 1.743514e-07, -0.754473, 0.6563312)
+bones/8/rotation = Quaternion(2.3204367e-07, -1.4760145e-07, 0.8088049, 0.588077)
+bones/9/rotation = Quaternion(0.11175592, 0.06225322, 0.48264107, 0.8664253)
+bones/10/rotation = Quaternion(0.004853922, -0.048809636, 0.033425327, 0.99823684)
+bones/11/rotation = Quaternion(0.10022165, 0.091192484, 0.08526192, 0.9871018)
+bones/12/rotation = Quaternion(-0.41345257, -0.5736348, -0.4134527, 0.573635)
+bones/13/rotation = Quaternion(-0.76137096, -2.2871967e-08, 1.1098134e-08, 0.6483165)
+bones/17/rotation = Quaternion(-0.76137096, 2.2871967e-08, -1.1098134e-08, 0.6483165)
+
+[node name="BoneAttachment3D" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="1" unique_id=1850601423]
+transform = Transform3D(-0.99973065, 0.02085242, -0.010171339, -0.023195792, -0.8891178, 0.45708948, 0.00048793852, 0.45720243, 0.8893623, -0.8413855, 0.33742052, 0.37695426)
 bone_name = "hand.r"
 bone_idx = 11
 
 [node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=1888108630]
 transform = Transform3D(0.99999994, -8.742277e-08, 8.74228e-08, -8.742277e-08, -0.9999999, 0, 8.742277e-08, -7.642741e-15, -1.0000002, 0.060681462, 0.28999162, 0.013255954)
 
-[node name="BoneAttachment3D2" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(208695743) index="2" unique_id=2076363227]
-transform = Transform3D(1, 0, 2.3841864e-07, 6.501062e-08, 0.9621064, -0.27267423, -2.293841e-07, 0.27267423, 0.9621064, 0, 2.0931845, 1.5528559e-07)
+[node name="BoneAttachment3D2" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="2" unique_id=2076363227]
+transform = Transform3D(1, 0, 2.3841864e-07, 6.01766e-08, 0.96762323, -0.2523989, -2.3069941e-07, 0.2523989, 0.96762323, 0, 2.0927224, -0.043980423)
 bone_name = "head"
 bone_idx = 3
 
 [node name="Head" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D2" index="0" unique_id=446201467]
 transform = Transform3D(0.99999976, 0, -5.684342e-14, -2.1316282e-14, 1, 0, -2.842171e-14, 0, 1, -0.01805923, 0.4196868, 0.06488645)
 
-[node name="BoneAttachment3D3" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(208695743) index="3" unique_id=1754178216]
-transform = Transform3D(-0.9885714, 0.13549191, -0.06609346, -0.15075289, -0.8884983, 0.4334094, -4.917383e-07, 0.43841994, 0.89877, 1.1046395, 0.49968076, 0.38396072)
+[node name="BoneAttachment3D3" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="3" unique_id=1754178216]
+transform = Transform3D(-0.9885714, 0.13549191, -0.06609346, -0.15071955, -0.8790903, 0.45219803, 0.0031670183, 0.45699167, 0.88946503, 1.1046395, 0.5076379, 0.37337697)
 bone_name = "hand.l"
 bone_idx = 7
 
 [node name="OffHandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D3" index="0" unique_id=869926455]
 transform = Transform3D(0.99999976, -8.742278e-08, 8.74228e-08, -8.7422755e-08, -1, 0, 8.7422755e-08, -7.642742e-15, -1.0000002, -0.0016051531, 0.31736088, -0.1284455)
 
-[node name="BoneAttachment3D4" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(208695743) index="4" unique_id=1531271822]
-transform = Transform3D(1, 0, 0, 0, 1, -1.3225416e-07, 0, 1.3225416e-07, 1, 0, 1, 0)
+[node name="BoneAttachment3D4" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="4" unique_id=1531271822]
+transform = Transform3D(1, 0, 0, 0, 0.9997792, 0.021011192, 0, -0.021011192, 0.9997792, 0, 0.9997792, -0.021011325)
 bone_name = "chest"
 bone_idx = 1
 
 [node name="Back" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D4" index="0" unique_id=1793702365]
 transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, 8.526513e-14, 0, -8.526513e-14, 0.99999976, 0, 0, -0.41811383)
 
-[node name="BoneAttachment3D5" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(208695743) index="5" unique_id=1424530261]
-transform = Transform3D(0, 0.9486832, -0.3162276, -2.0861624e-07, 0.31622764, 0.94868326, 0.9999999, 1.1920928e-07, 2.3841858e-07, 0, 0, 0)
+[node name="BoneAttachment3D5" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="5" unique_id=1424530261]
+transform = Transform3D(0, 0.94868326, -0.31622776, -2.980232e-07, 0.31622776, 0.94868326, 0.99999994, 2.980232e-08, 2.9802322e-07, 0, 0, 0)
 bone_name = "hip.l"
 bone_idx = 12
 
 [node name="Hip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D5" index="0" unique_id=466678148]
 transform = Transform3D(1.0000001, -5.684342e-14, 0, 1.4210855e-14, -8.940695e-08, -1, -2.842171e-14, 1.0000002, -5.9604666e-08, 0.21434866, 0.59987867, 0.1227417)
+
+[node name="AnimationPlayer" parent="." index="2" unique_id=2082373171]
+speed_scale = 1.3

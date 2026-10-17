@@ -1,26 +1,7 @@
 class_name WorldData
 extends RefCounted
 
-const MAGIC        := 0x47574C44  # "GWLD" - legacy, biome props have no weight
-const MAGIC_W      := 0x47574C32  # "GWL2" - biome props are (path, weight)
-const MAGIC_B      := 0x47574C33  # "GWL3" - adds a box-collider section (OBB walls)
-# "GWL4" - identical to GWL3 except each biome's spawner field is a pascal
-# string (monster name, resolved server-side via name_to_type()) instead of a
-# raw u8 monster id — not used on client either way, just read to advance
-# the cursor correctly.
-const MAGIC_G      := 0x47574C34
-# "GWL5" - identical to GWL4 except each water rect carries 1 extra trailing
-# field (is_waterfall: u8). Gameplay-wise this is still a normal flat
-# WaterRect placed exactly like any other (same x/z/width/depth/y); when set,
-# this client instead samples the terrain heightmap under the rect's
-# footprint to find the lowest point and renders a box volume from y down to
-# it, so it always reaches the ground however steep the slope is there.
-const MAGIC_F      := 0x47574C35
-# "GWL6" - identical to GWL5 except each wall record is followed by a u8
-# opening count and that many carved openings (6 floats each: x/y/z min/max
-# in the wall's local frame, y = 0 at the wall's base). Rendered by slicing
-# the wall into whatever solid boxes remain — see _carve_wall_pieces().
-const MAGIC_O      := 0x47574C36
+const MAGIC := 0x47574C36  # "GWL6"
 const WorldShaders  = preload("res://world/world_shaders.gd")
 
 # Preloaded so the exporter includes them (paths come from world.bin at runtime)
@@ -64,6 +45,9 @@ const _FALLBACK_PATH := "res://assets/fushi.glb"
 # the file, while wall_types.json already distinguishes them correctly).
 const _WALL_TYPES_PATH := "res://wall_types.json"
 var _wall_mats        : Dictionary = {}
+# Wall type id -> jitter scale, from wall_types.json's "jitter" (1 = the full
+# _WALL_JITTER / _WALL_JITTER_Y, 0 = flat, e.g. cut marble). Missing = 1.
+var _wall_jitter      : Dictionary = {}
 var _wall_mat_default : ShaderMaterial
 # Static object type id -> {mesh, scale_ratio, resource}. Read directly from
 # world.bin's trailing static-type table (written by world_editor's save(),
@@ -79,29 +63,20 @@ func load(path: String) -> bool:
 		push_error("WorldData: cannot open " + path)
 		return false
 
-	var first := f.get_32()
-	var static_offset: int
-	var box_offset: int = 0
-	if first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O:
-		chunk_cells   = f.get_32()
-		chunks_x      = f.get_32()
-		chunks_z      = f.get_32()
-		cell_size     = f.get_float()
-		var raw_ocx   := f.get_32()
-		var raw_ocz   := f.get_32()
-		static_offset = f.get_32()
-		origin_cx = raw_ocx if raw_ocx < 0x80000000 else int(raw_ocx) - 0x100000000
-		origin_cz = raw_ocz if raw_ocz < 0x80000000 else int(raw_ocz) - 0x100000000
-		if first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O:
-			box_offset = f.get_32()
-	else:
-		chunk_cells   = first
-		chunks_x      = f.get_32()
-		chunks_z      = f.get_32()
-		cell_size     = f.get_float()
-		static_offset = f.get_32()
-		origin_cx = -(chunks_x / 2)
-		origin_cz = -(chunks_z / 2)
+	if f.get_32() != MAGIC:
+		push_error("WorldData: unsupported world format in " + path + " — only GWL6 is supported")
+		f.close()
+		return false
+	chunk_cells       = f.get_32()
+	chunks_x          = f.get_32()
+	chunks_z          = f.get_32()
+	cell_size         = f.get_float()
+	var raw_ocx       := f.get_32()
+	var raw_ocz       := f.get_32()
+	var static_offset := f.get_32()
+	var box_offset    := f.get_32()
+	origin_cx = raw_ocx if raw_ocx < 0x80000000 else int(raw_ocx) - 0x100000000
+	origin_cz = raw_ocz if raw_ocz < 0x80000000 else int(raw_ocz) - 0x100000000
 	world_ox = origin_cx * chunk_cells * cell_size
 	world_oz = origin_cz * chunk_cells * cell_size
 
@@ -109,19 +84,13 @@ func load(path: String) -> bool:
 	var stride := chunk_cells + 1
 	var cells  := stride * stride
 
-	var has_biome := (first == MAGIC or first == MAGIC_W or first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O)
-	var has_prop_weight := (first == MAGIC_W or first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O)
-	var has_boxes := (first == MAGIC_B or first == MAGIC_G or first == MAGIC_F or first == MAGIC_O)
-	var has_waterfall := (first == MAGIC_F or first == MAGIC_O)
-	var has_openings := (first == MAGIC_O)
-
 	var types   : Array[int] = []
 	var biomes_ : Array[int] = []
 	var offsets : Array[int] = []
 
 	for i in range(total):
 		types.append(f.get_8())
-		biomes_.append(f.get_8() if has_biome else 0)
+		biomes_.append(f.get_8())
 		offsets.append(f.get_32())
 
 	_chunks.clear()
@@ -162,29 +131,26 @@ func load(path: String) -> bool:
 		var height := f.get_float()
 		_static_objects.append({ "type": type, "x": ox_, "z": oz_, "radius": radius, "height": height })
 
-	# Each of the sections below is optional/trailing and was historically read
-	# with a plain eof_reached() check — that alone breaks once has_boxes is
-	# true, since the file doesn't end after the last trailing section anymore:
-	# it ends after the box section, appended past all of these. Without also
-	# checking against box_offset, a missing table (e.g. no static-type-defs
-	# on this file) gets misread from the box section's own leading bytes
-	# instead of being skipped, corrupting _static_type_defs and sending every
-	# static object down the _fallback_scene path.
+	# Each of the sections below is optional/trailing. A plain eof_reached()
+	# check isn't enough on its own, since the file doesn't end after the last
+	# trailing section: it ends after the box section, appended past all of
+	# these. Without also checking against box_offset, a missing table (e.g.
+	# no static-type-defs on this file) gets misread from the box section's
+	# own leading bytes instead of being skipped, corrupting _static_type_defs
+	# and sending every static object down the _fallback_scene path.
 	_water_rects.clear()
-	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
+	if not f.eof_reached() and f.get_position() < box_offset:
 		var wcount := f.get_32()
 		for _i in range(wcount):
 			var wr := {
 				"x": f.get_float(), "z": f.get_float(),
 				"width": f.get_float(), "depth": f.get_float(), "y": f.get_float(),
-				"is_waterfall": false,
+				"is_waterfall": f.get_8() != 0,
 			}
-			if has_waterfall:
-				wr.is_waterfall = f.get_8() != 0
 			_water_rects.append(wr)
 
 	_biomes.clear()
-	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
+	if not f.eof_reached() and f.get_position() < box_offset:
 		var bcount := f.get_8()
 		for _bi in range(bcount):
 			var bid   := f.get_8()
@@ -195,17 +161,9 @@ func load(path: String) -> bool:
 			var bweights: Array[float] = []
 			for _pi in range(pc):
 				n = f.get_8(); bprops.append(f.get_buffer(n).get_string_from_utf8() if n > 0 else "")
-				bweights.append(f.get_float() if has_prop_weight else 1.0)
-			# spawner fields (not used on client — read to advance position).
-			# GWL4 re-encodes the monster-id field as a pascal string (the
-			# monster's name, resolved server-side via name_to_type()) instead
-			# of a raw u8 id — everything else about the biome record is
-			# unchanged from GWL3.
-			var bst
-			if first == MAGIC_G or first == MAGIC_F or first == MAGIC_O:
-				n = f.get_8(); bst = f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
-			else:
-				bst = f.get_8()
+				bweights.append(f.get_float())
+			# spawner fields (not used on client — read to advance position)
+			n = f.get_8(); var bst := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
 			var bsi := f.get_float()
 			var bsm  := f.get_8(); var bsp := f.get_float()
 			_biomes.append({ "id": bid, "name": bname, "material": bmat, "props": bprops,
@@ -218,11 +176,11 @@ func load(path: String) -> bool:
 
 	_prop_types.clear()
 	_prop_instances.clear()
-	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
+	if not f.eof_reached() and f.get_position() < box_offset:
 		var ptcount := f.get_8()
 		for _pti in range(ptcount):
 			var pn := f.get_8(); _prop_types.append(f.get_buffer(pn).get_string_from_utf8() if pn > 0 else "")
-	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
+	if not f.eof_reached() and f.get_position() < box_offset:
 		var picount := f.get_32()
 		for _pii in range(picount):
 			_prop_instances.append({
@@ -237,7 +195,7 @@ func load(path: String) -> bool:
 	# trailing section: absent on world.bin files saved before this existed,
 	# in which case every static object falls back to _fallback_scene below.
 	_static_type_defs.clear()
-	if not f.eof_reached() and (not has_boxes or f.get_position() < box_offset):
+	if not f.eof_reached() and f.get_position() < box_offset:
 		var stcount := f.get_32()
 		for _sti in range(stcount):
 			var stid        := f.get_8()
@@ -251,7 +209,7 @@ func load(path: String) -> bool:
 	# rather than sequentially; reading it any earlier would leave the cursor
 	# at EOF and silently skip everything that comes after it above.
 	_static_boxes.clear()
-	if has_boxes:
+	if box_offset > 0:
 		f.seek(box_offset)
 		var box_count := f.get_32()
 		for _i in range(box_count):
@@ -264,14 +222,13 @@ func load(path: String) -> bool:
 			var bheight  := f.get_float()
 			var byoffset := f.get_float()
 			var openings: Array = []
-			if has_openings:
-				var ocount := f.get_8()
-				for _oi in range(ocount):
-					openings.append({
-						"x_min": f.get_float(), "x_max": f.get_float(),
-						"y_min": f.get_float(), "y_max": f.get_float(),
-						"z_min": f.get_float(), "z_max": f.get_float(),
-					})
+			var ocount := f.get_8()
+			for _oi in range(ocount):
+				openings.append({
+					"x_min": f.get_float(), "x_max": f.get_float(),
+					"y_min": f.get_float(), "y_max": f.get_float(),
+					"z_min": f.get_float(), "z_max": f.get_float(),
+				})
 			_static_boxes.append({ "type": btype, "x": bx, "z": bz,
 				"half_x": bhalf_x, "half_z": bhalf_z, "rot_y": brot_y, "height": bheight,
 				"y_offset": byoffset, "openings": openings })
@@ -292,6 +249,7 @@ func load(path: String) -> bool:
 
 func _load_wall_types() -> void:
 	_wall_mats.clear()
+	_wall_jitter.clear()
 	_wall_mat_default = WorldShaders.wall_mat()
 	var wf := FileAccess.open(_WALL_TYPES_PATH, FileAccess.READ)
 	if wf == null:
@@ -303,10 +261,20 @@ func _load_wall_types() -> void:
 		return
 	for row: Dictionary in rows:
 		var wid  := int(row.get("id", 0))
+		_wall_jitter[wid] = float(row.get("jitter", 1.0))
 		var path := row.get("texture", "") as String
 		if path.is_empty():
 			continue
-		var tex := load(path) as Texture2D
+		var tex: Texture2D = null
+		if ResourceLoader.exists(path):
+			tex = load(path) as Texture2D
+		else:
+			# Not imported yet (a texture dropped in while the editor wasn't
+			# scanning): read the raw image so the wall still renders.
+			var img := Image.load_from_file(path)
+			if img != null and not img.is_empty():
+				img.generate_mipmaps()
+				tex = ImageTexture.create_from_image(img)
 		if tex == null:
 			push_error("WorldData: wall type %d texture failed to load: %s" % [wid, path])
 			continue
@@ -392,7 +360,7 @@ func make_chunk_node(i: int, arrays: Dictionary) -> Node3D:
 		chunk_mat = _material
 	else:
 		if not _biome_mat_cache.has(biome_id):
-			_biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _biomes)
+			_biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _biomes, chunk_cells * cell_size)
 		chunk_mat = _biome_mat_cache[biome_id] as Material
 
 	var node := Node3D.new()
@@ -432,11 +400,7 @@ func spawn_static(parent: Node3D) -> void:
 		node.scale    = Vector3.ONE * ((obj.radius as float) / scale_ratio)
 		parent.add_child(_with_cylinder_collision(node, obj.radius as float, obj.height as float))
 
-	for wb in _static_boxes:
-		var wy := _get_height_at(wb.x as float, wb.z as float)
-		if is_nan(wy): wy = 0.0
-		for piece in _carve_wall_pieces(wb):
-			parent.add_child(_with_collision(_make_wall_box(wb, piece, wy)))
+	_spawn_walls(parent)
 
 	var water_mat := WorldShaders.water_mat()
 	for wr in _water_rects:
@@ -772,67 +736,512 @@ func _make_chunk(arrays: Array, origin: Vector3, mat: Material) -> MeshInstance3
 	return mi
 
 
-# OBB wall from world.bin's box-collider section. The wall_mat shader tiles
-# from world-space position/normal (triplanar), so a plain BoxMesh's own UVs
-# are irrelevant here — that's what keeps the texture at a consistent scale
-# and aligned to each face regardless of the box's size or yaw.
+# Wall faces are cut on a grid this size, aligned to the mesh's frame (world
+# space for merged walls), plus their own edges. It sets the size of the
+# bumps the vertex jitter makes, and staying at or under ps2_mesh.gd's
+# PRIMITIVE_CELL means PS2 mode (light and fog per vertex) never has to
+# re-tessellate walls itself.
+const _WALL_CELL := 1.0
+# Every wall vertex moves in world X and Z by up to ± _WALL_JITTER and in Y
+# by up to ± _WALL_JITTER_Y, read from smooth noise over world position (see
+# _wall_offset) with nodes every _WALL_NOISE_CELL. Each axis's offset ignores
+# that axis's own coordinate, so opposite faces of a box (same position but
+# for its thickness axis) move identically and can't cross at any thickness
+# or jitter size. Y is larger because ceilings are only bumped by it, and
+# from below small bumps on a big flat face don't show.
+const _WALL_JITTER     := 0.1
+const _WALL_JITTER_Y   := 0.15
+const _WALL_NOISE_CELL := 1.0
+# Merged wall meshes are split on a world grid this size, so a big connected
+# group (a maze, a town) is still frustum-culled piece by piece.
+const _WALL_TILE   := 32.0
+# Cell size of the spatial hash that finds a box's (or corner's) neighbours.
+const _WALL_BUCKET := 4.0
+# Coordinates closer than this count as equal (float rounding).
+const _WALL_EPS    := 1e-4
+
+
+# OBB walls from world.bin's box-collider section. Each wall gets its own
+# StaticBody3D with one BoxShape3D per solid piece (_carve_wall_pieces):
+# exactly the server's boxes, solid (a trimesh is hollow, so rays and fast
+# bodies starting inside one slip through) and cheap to test.
 #
-# `piece` is one local-frame sub-box of the wall ({x0,x1,y0,y1,z0,z1}, x/z
-# pre-rotation, y = 0 at the wall's base) — the whole wall when it has no
-# openings, otherwise one of the solid pieces from _carve_wall_pieces().
-func _make_wall_box(box: Dictionary, piece: Dictionary, ground_y: float) -> MeshInstance3D:
-	var y_offset := box.get("y_offset", 0.0) as float
-	var rot_y    := box.rot_y as float
-	var px0 := piece.x0 as float; var px1 := piece.x1 as float
-	var py0 := piece.y0 as float; var py1 := piece.y1 as float
-	var pz0 := piece.z0 as float; var pz1 := piece.z1 as float
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(px1 - px0, py1 - py0, pz1 - pz0)
-	var mat: ShaderMaterial = _wall_mats.get(box.type as int, _wall_mat_default)
-	mesh.surface_set_material(0, mat)
-	var mi := MeshInstance3D.new()
-	mi.mesh        = mesh
-	# Base sits at ground_y + y_offset (lets a wall float, e.g. act as a
-	# ceiling) — mirrors the server's top_y = terrain + y_offset + height
-	# (world.h/world.cpp). The piece's local center is rotated by the wall's
-	# yaw the same way Node3D.rotation.y rotates its own local axes.
-	var lx := (px0 + px1) * 0.5; var lz := (pz0 + pz1) * 0.5
-	var cr := cos(rot_y); var sr := sin(rot_y)
-	mi.position    = Vector3((box.x as float) + lx * cr + lz * sr,
-		ground_y + y_offset + (py0 + py1) * 0.5,
-		(box.z as float) - lx * sr + lz * cr)
-	mi.rotation.y  = rot_y
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-	return mi
+# The visuals are merged: walls of the same type that touch or overlap and
+# are turned by a multiple of 90° become one mesh, built from their pieces
+# in world space after cutting the overlaps away (_disjoint_boxes). That
+# draws each connected room as one mesh per wall type (per _WALL_TILE), and
+# leaves out every face buried in a neighbouring wall or lying against it —
+# including the coplanar ones at overlapping corners that would otherwise
+# flicker. A wall at any other angle keeps its own mesh, in its own frame.
+func _spawn_walls(parent: Node3D) -> void:
+	var merged: Array[Dictionary] = []   # {type, boxes} per axis-aligned wall, world space
+	var jobs: Array[Dictionary] = []     # meshes to build: {boxes, xform, type, parent[, overlapping]}
+	for wb in _static_boxes:
+		var wy := _get_height_at(wb.x as float, wb.z as float)
+		if is_nan(wy): wy = 0.0
+		var xform  := _wall_transform(wb, wy)
+		var pieces := _carve_wall_pieces(wb)
+		var body   := StaticBody3D.new()
+		body.collision_layer = COLLISION_LAYER_WORLD
+		body.collision_mask  = 0
+		body.transform       = xform
+		for b in pieces:
+			var shape := BoxShape3D.new()
+			shape.size = b.size
+			var cs := CollisionShape3D.new()
+			cs.shape    = shape
+			cs.position = b.get_center()
+			body.add_child(cs)
+		parent.add_child(body)
+
+		var turn := fposmod(wb.rot_y as float, PI * 0.5)
+		if turn < 1e-3 or turn > PI * 0.5 - 1e-3:
+			var world: Array[AABB] = []
+			for b in pieces:
+				# Snapped so walls that meet compute the exact same coordinate.
+				var w := xform * b
+				world.append(_aabb(w.position.snapped(Vector3.ONE * _WALL_EPS), w.end.snapped(Vector3.ONE * _WALL_EPS)))
+			merged.append({"type": wb.type as int, "boxes": world})
+		else:   # the mesh is in the body's frame
+			jobs.append({"boxes": pieces, "xform": xform, "type": wb.type as int, "parent": body})
+	for group in _wall_groups(merged):
+		jobs.append({"boxes": group.boxes, "xform": Transform3D.IDENTITY, "type": group.type as int,
+			"parent": parent, "overlapping": true})
+
+	for job in jobs:
+		job["jitter"] = _wall_jitter.get(job.type, 1.0)
+	# Building the meshes is pure data, so every job runs on the worker pool;
+	# each writes only its own job's "arrays". The nodes are made back here.
+	var task := WorkerThreadPool.add_group_task(func(i: int) -> void:
+		var job: Dictionary = jobs[i]
+		var boxes: Array[AABB] = _disjoint_boxes(job.boxes) if job.get("overlapping", false) else job.boxes
+		job["arrays"] = _wall_mesh_arrays(boxes, job.xform, job.jitter), jobs.size(), -1, true, "wall meshes")
+	WorkerThreadPool.wait_for_group_task_completion(task)
+	for job in jobs:
+		var mat: ShaderMaterial = _wall_mats.get(job.type, _wall_mat_default)
+		for arr: Array in job.arrays:
+			var mesh := ArrayMesh.new()
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			mesh.surface_set_material(0, mat)
+			var mi := MeshInstance3D.new()
+			mi.mesh        = mesh
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+			(job.parent as Node3D).add_child(mi)
 
 
-# Splits a wall into the solid local-frame boxes left after subtracting each
-# of its openings — the same AABB-minus-AABB "picture frame" slicing
-# world_editor's _carve_box_list() uses, so a window/door renders (and
-# collides, via _with_collision) as a real hole without a CSG boolean.
-func _carve_wall_pieces(box: Dictionary) -> Array:
-	var hx := box.half_x as float; var hz := box.half_z as float
-	var pieces: Array = [{ "x0": -hx, "x1": hx, "y0": 0.0, "y1": box.height as float, "z0": -hz, "z1": hz }]
-	for op: Dictionary in box.get("openings", []):
-		var ox0 := op.x_min as float; var ox1 := op.x_max as float
-		var oy0 := op.y_min as float; var oy1 := op.y_max as float
-		var oz0 := op.z_min as float; var oz1 := op.z_max as float
-		var result: Array = []
-		for b: Dictionary in pieces:
-			var bx0 := b.x0 as float; var bx1 := b.x1 as float
-			var by0 := b.y0 as float; var by1 := b.y1 as float
-			var bz0 := b.z0 as float; var bz1 := b.z1 as float
-			var ix0 := maxf(bx0, ox0); var ix1 := minf(bx1, ox1)
-			var iy0 := maxf(by0, oy0); var iy1 := minf(by1, oy1)
-			var iz0 := maxf(bz0, oz0); var iz1 := minf(bz1, oz1)
-			if ix0 >= ix1 or iy0 >= iy1 or iz0 >= iz1:
-				result.append(b)
+# Base sits at ground_y + y_offset (lets a wall float, e.g. act as a
+# ceiling) — mirrors the server's top_y = terrain + y_offset + height
+# (world.h/world.cpp).
+static func _wall_transform(box: Dictionary, ground_y: float) -> Transform3D:
+	return Transform3D(Basis(Vector3.UP, box.rot_y as float),
+		Vector3(box.x as float, ground_y + (box.get("y_offset", 0.0) as float), box.z as float))
+
+
+# Unions walls (from _spawn_walls' `merged`) of the same type whose pieces
+# touch or overlap into {type, boxes} groups.
+static func _wall_groups(walls: Array[Dictionary]) -> Array[Dictionary]:
+	var root := range(walls.size())
+	var find := func(i: int) -> int:
+		while root[i] != i:
+			root[i] = root[root[i]]
+			i = root[i]
+		return i
+	var boxes: Array[AABB] = []
+	var owner := PackedInt32Array()
+	for i in walls.size():
+		for b: AABB in walls[i].boxes:
+			boxes.append(b.grow(1e-3))
+			owner.append(i)
+	var buckets := {}
+	for bi in boxes.size():
+		_bucket_add(buckets, boxes[bi], bi)
+	for bi in boxes.size():
+		var i := owner[bi]
+		for oi: int in _bucket_query(buckets, boxes[bi]):
+			var j := owner[oi]
+			if j != i and walls[i].type == walls[j].type and boxes[bi].intersects(boxes[oi]):
+				var ri: int = find.call(i)
+				var rj: int = find.call(j)
+				if ri != rj:
+					root[rj] = ri
+	var by_root := {}
+	for i in walls.size():
+		var r: int = find.call(i)
+		if not by_root.has(r):
+			by_root[r] = {"type": walls[i].type, "boxes": [] as Array[AABB]}
+		(by_root[r].boxes as Array[AABB]).append_array(walls[i].boxes)
+	var out: Array[Dictionary] = []
+	for g: Dictionary in by_root.values():
+		out.append(g)
+	return out
+
+
+# The same solid as `boxes`, as non-overlapping boxes: each box minus every
+# box kept before it that it overlaps.
+static func _disjoint_boxes(boxes: Array[AABB]) -> Array[AABB]:
+	var out: Array[AABB] = []
+	var buckets := {}
+	for b in boxes:
+		var parts: Array[AABB] = [b]
+		for oi: int in _bucket_query(buckets, b):
+			parts = _subtract_box(parts, out[oi])
+			if parts.is_empty():
+				break
+		for p in parts:
+			_bucket_add(buckets, p, out.size())
+			out.append(p)
+	return out
+
+
+# Spatial hash: _WALL_BUCKET-sized cells -> indices (or points) in them.
+static func _bucket_keys(b: AABB) -> Array[Vector3i]:
+	var lo := Vector3i((b.position / _WALL_BUCKET).floor())
+	var hi := Vector3i((b.end / _WALL_BUCKET).floor())
+	var keys: Array[Vector3i] = []
+	for x in range(lo.x, hi.x + 1):
+		for y in range(lo.y, hi.y + 1):
+			for z in range(lo.z, hi.z + 1):
+				keys.append(Vector3i(x, y, z))
+	return keys
+
+
+static func _bucket_add(buckets: Dictionary, b: AABB, item: Variant) -> void:
+	for k in _bucket_keys(b):
+		if buckets.has(k):
+			(buckets[k] as Array).append(item)
+		else:
+			buckets[k] = [item]
+
+
+# Indices stored in any cell `b` covers, each once.
+static func _bucket_query(buckets: Dictionary, b: AABB) -> Array:
+	var seen := {}
+	for k in _bucket_keys(b):
+		for i in buckets.get(k, []):
+			seen[i] = true
+	return seen.keys()
+
+
+
+
+# Surface arrays (one per _WALL_TILE of world space) for non-overlapping
+# `boxes`, as separate flat-shaded triangles, in the frame `xform` maps to
+# world space. Pure data: safe on a worker thread.
+#
+#  1. Each box face is cut down to the parts no neighbouring box touches (the
+#     rest is inside the solid).
+#  2. Each remaining face rect is cut on the _WALL_CELL grid of the frame and
+#     at its own edges. Grid cells on the rect's border also take every
+#     corner of another face rect that lands on that border, and are then
+#     fanned from their centre. Both faces along any shared edge therefore
+#     have exactly the same vertices on it (no T-junctions), however the
+#     boxes are laid out.
+#  3. Every vertex moves by _wall_offset() of its world position, times
+#     `jitter` (the wall type's, see _wall_jitter). That
+#     depends on nothing else, so shared edges stay shut after it, inside a
+#     mesh, between tiles and between separate walls' meshes.
+#
+# UVs are the pre-jitter face coordinates: the wall_mat shader tiles from
+# world-space position/normal (triplanar), which is what keeps the texture
+# at a consistent scale and aligned to each face regardless of the wall's
+# size or yaw.
+static func _wall_mesh_arrays(boxes: Array[AABB], xform: Transform3D, jitter := 1.0) -> Array:
+	var buckets := {}
+	for i in boxes.size():
+		_bucket_add(buckets, boxes[i].grow(_WALL_EPS), i)
+
+	var faces := []      # [axis, side, plane, Rect2 in (u, v)]
+	var corners := {}    # bucket -> face rect corners in it
+	for bi in boxes.size():
+		var b := boxes[bi]
+		var near := _bucket_query(buckets, b.grow(_WALL_EPS))
+		for axis in 3:
+			var u := (axis + 1) % 3
+			var v := (axis + 2) % 3
+			for side in 2:   # 0 = face at the box's min on `axis`, 1 = at its max
+				var plane: float = b.end[axis] if side == 1 else b.position[axis]
+				var rects: Array[Rect2] = [Rect2(b.position[u], b.position[v], b.size[u], b.size[v])]
+				for oi: int in near:
+					var o := boxes[oi]
+					var touching: float = o.position[axis] if side == 1 else o.end[axis]
+					if oi != bi and absf(touching - plane) < _WALL_EPS:
+						rects = _subtract_rect(rects, Rect2(o.position[u], o.position[v], o.size[u], o.size[v]))
+				for r in rects:
+					if r.size.x < _WALL_EPS or r.size.y < _WALL_EPS:
+						continue
+					faces.append([axis, side, plane, r])
+					for c in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
+						var p := _face_point(axis, plane, c.x, c.y)
+						_bucket_add(corners, AABB(p, Vector3.ZERO), p)
+
+	# _moved_point adds to_local * _wall_offset(), so scaling it by `jitter`
+	# scales the offset (0 leaves the vertices where they are).
+	var to_local := xform.basis.inverse() * jitter
+	var tiles := {}   # Vector2i -> [verts, norms, uvs]
+	for f in faces:
+		var axis: int = f[0]
+		var side: int = f[1]
+		var plane: float = f[2]
+		var r: Rect2 = f[3]
+		var us := _grid_cuts(r.position.x, r.end.x)
+		var vs := _grid_cuts(r.position.y, r.end.y)
+		# Other faces' corners on this rect's border: bottom/top edges give u
+		# values, left/right edges v values.
+		var on_v0 := _edge_extras(corners, axis, plane, r, 0)
+		var on_v1 := _edge_extras(corners, axis, plane, r, 1)
+		var on_u0 := _edge_extras(corners, axis, plane, r, 2)
+		var on_u1 := _edge_extras(corners, axis, plane, r, 3)
+
+		var mid := xform * _face_point(axis, plane, r.get_center().x, r.get_center().y)
+		var tile := Vector2i(floori(mid.x / _WALL_TILE), floori(mid.z / _WALL_TILE))
+		if not tiles.has(tile):
+			tiles[tile] = [PackedVector3Array(), PackedVector3Array(), PackedVector2Array()]
+		var arrs: Array = tiles[tile]
+
+		# This face's grid points, moved, once for all the cells that share them.
+		var nu := us.size()
+		var grid := PackedVector3Array()
+		for y in vs:
+			for x in us:
+				grid.append(_moved_point(axis, plane, x, y, xform, to_local))
+		var last_i := nu - 2
+		var last_j := vs.size() - 2
+		for j in last_j + 1:
+			for i in last_i + 1:
+				var u0 := us[i]; var u1 := us[i + 1]
+				var v0 := vs[j]; var v1 := vs[j + 1]
+				# Cell outline, counter-clockwise in (u, v): corners from the
+				# grid, extra border points moved here (border cells only).
+				var pts := PackedVector3Array([grid[j * nu + i]])
+				var uv  := PackedVector2Array([Vector2(u0, v0)])
+				if j == 0:
+					for x in on_v0:
+						if x > u0 + _WALL_EPS and x < u1 - _WALL_EPS:
+							pts.append(_moved_point(axis, plane, x, v0, xform, to_local)); uv.append(Vector2(x, v0))
+				pts.append(grid[j * nu + i + 1]); uv.append(Vector2(u1, v0))
+				if i == last_i:
+					for y in on_u1:
+						if y > v0 + _WALL_EPS and y < v1 - _WALL_EPS:
+							pts.append(_moved_point(axis, plane, u1, y, xform, to_local)); uv.append(Vector2(u1, y))
+				pts.append(grid[(j + 1) * nu + i + 1]); uv.append(Vector2(u1, v1))
+				if j == last_j:
+					for k in range(on_v1.size() - 1, -1, -1):
+						var x := on_v1[k]
+						if x > u0 + _WALL_EPS and x < u1 - _WALL_EPS:
+							pts.append(_moved_point(axis, plane, x, v1, xform, to_local)); uv.append(Vector2(x, v1))
+				pts.append(grid[(j + 1) * nu + i]); uv.append(Vector2(u0, v1))
+				if i == 0:
+					for k in range(on_u0.size() - 1, -1, -1):
+						var y := on_u0[k]
+						if y > v0 + _WALL_EPS and y < v1 - _WALL_EPS:
+							pts.append(_moved_point(axis, plane, u0, y, xform, to_local)); uv.append(Vector2(u0, y))
+				_emit_wall_cell(arrs, pts, uv, axis, side, plane, xform, to_local)
+
+	var out := []
+	for arrs: Array in tiles.values():
+		if (arrs[0] as PackedVector3Array).is_empty():
+			continue
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = arrs[0]
+		arr[Mesh.ARRAY_NORMAL] = arrs[1]
+		arr[Mesh.ARRAY_TEX_UV] = arrs[2]
+		out.append(arr)
+	return out
+
+
+# _wall_mesh_arrays() as ArrayMeshes (main thread).
+static func _wall_meshes(boxes: Array[AABB], xform: Transform3D) -> Array[ArrayMesh]:
+	var out: Array[ArrayMesh] = []
+	for arr: Array in _wall_mesh_arrays(boxes, xform):
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		out.append(mesh)
+	return out
+
+
+# Triangulates one grid cell into `arrs`: `pts` (moved) and `uv` (their face
+# coordinates) are its outline, counter-clockwise in (u, v), starting at its
+# min corner. A plain quad takes the diagonal its first corner's hash picks;
+# a cell with extra border points is fanned from its centre.
+# Counter-clockwise triangles face -axis, so max-side faces are mirrored.
+static func _emit_wall_cell(arrs: Array, pts: PackedVector3Array, uv: PackedVector2Array, axis: int,
+		side: int, plane: float, xform: Transform3D, to_local: Basis) -> void:
+	var tris: PackedInt32Array
+	if pts.size() == 4:   # 0 a, 1 a+u, 2 a+u+v, 3 a+v
+		var h := _wall_hash(xform * _face_point(axis, plane, uv[0].x, uv[0].y))
+		tris = PackedInt32Array([0, 1, 2, 0, 2, 3]) if (h >> 17) & 1 else PackedInt32Array([0, 1, 3, 1, 2, 3])
+	else:
+		var n := pts.size()
+		var lo := uv[0]
+		var hi := uv[0]
+		for q in uv:
+			lo = lo.min(q)
+			hi = hi.max(q)
+		var mid := (lo + hi) * 0.5
+		uv.append(mid)
+		pts.append(_moved_point(axis, plane, mid.x, mid.y, xform, to_local))
+		tris = PackedInt32Array()
+		for k in n:
+			tris.append_array(PackedInt32Array([n, k, (k + 1) % n]))
+	var verts: PackedVector3Array = arrs[0]
+	var norms: PackedVector3Array = arrs[1]
+	var uvs:   PackedVector2Array = arrs[2]
+	for t in range(0, tris.size(), 3):
+		var k0 := tris[t]
+		var k1 := tris[t + 2] if side == 1 else tris[t + 1]
+		var k2 := tris[t + 1] if side == 1 else tris[t + 2]
+		var nrm := (pts[k2] - pts[k0]).cross(pts[k1] - pts[k0]).normalized()
+		verts.append(pts[k0]); verts.append(pts[k1]); verts.append(pts[k2])
+		norms.append(nrm); norms.append(nrm); norms.append(nrm)
+		uvs.append(uv[k0]); uvs.append(uv[k1]); uvs.append(uv[k2])
+
+
+# The face point at (u, v), moved by the wall offset of its world position.
+static func _moved_point(axis: int, plane: float, u: float, v: float, xform: Transform3D, to_local: Basis) -> Vector3:
+	var p := _face_point(axis, plane, u, v)
+	return p + to_local * _wall_offset(xform * p)
+
+
+# The point at (u, v) on the plane `axis` = `plane` (u, v are the next two
+# axes, wrapping).
+static func _face_point(axis: int, plane: float, u: float, v: float) -> Vector3:
+	var p := Vector3.ZERO
+	p[axis] = plane
+	p[(axis + 1) % 3] = u
+	p[(axis + 2) % 3] = v
+	return p
+
+
+# lo, every _WALL_CELL grid line strictly between, hi.
+static func _grid_cuts(lo: float, hi: float) -> PackedFloat64Array:
+	var out := PackedFloat64Array([lo])
+	for k in range(ceili(lo / _WALL_CELL), floori(hi / _WALL_CELL) + 1):
+		var x := k * _WALL_CELL
+		if x > lo + _WALL_EPS and x < hi - _WALL_EPS:
+			out.append(x)
+	out.append(hi)
+	return out
+
+
+# Sorted positions of other face rects' corners lying strictly inside one
+# edge of `r` (on the plane `axis` = `plane`): edge 0/1 is v = v0/v1 (gives
+# u values), edge 2/3 is u = u0/u1 (gives v values).
+static func _edge_extras(corners: Dictionary, axis: int, plane: float, r: Rect2, edge: int) -> PackedFloat64Array:
+	var along_u := edge < 2
+	var fixed: float = [r.position.y, r.end.y, r.position.x, r.end.x][edge]
+	var lo: float = r.position.x if along_u else r.position.y
+	var hi: float = r.end.x if along_u else r.end.y
+	var a := _face_point(axis, plane, lo if along_u else fixed, fixed if along_u else lo)
+	var b := _face_point(axis, plane, hi if along_u else fixed, fixed if along_u else hi)
+	var u := (axis + 1) % 3
+	var v := (axis + 2) % 3
+	var vals := PackedFloat64Array()
+	var seen := {}
+	for k in _bucket_keys(_aabb(a.min(b), a.max(b)).grow(_WALL_EPS)):
+		for p: Vector3 in corners.get(k, []):
+			if seen.has(p):
 				continue
-			if ix0 > bx0: result.append({ "x0": bx0, "x1": ix0, "y0": by0, "y1": by1, "z0": bz0, "z1": bz1 })
-			if ix1 < bx1: result.append({ "x0": ix1, "x1": bx1, "y0": by0, "y1": by1, "z0": bz0, "z1": bz1 })
-			if iz0 > bz0: result.append({ "x0": ix0, "x1": ix1, "y0": by0, "y1": by1, "z0": bz0, "z1": iz0 })
-			if iz1 < bz1: result.append({ "x0": ix0, "x1": ix1, "y0": by0, "y1": by1, "z0": iz1, "z1": bz1 })
-			if iy0 > by0: result.append({ "x0": ix0, "x1": ix1, "y0": by0, "y1": iy0, "z0": iz0, "z1": iz1 })
-			if iy1 < by1: result.append({ "x0": ix0, "x1": ix1, "y0": iy1, "y1": by1, "z0": iz0, "z1": iz1 })
-		pieces = result
+			seen[p] = true
+			if absf(p[axis] - plane) > _WALL_EPS:
+				continue
+			var pf: float = p[v] if along_u else p[u]
+			var pa: float = p[u] if along_u else p[v]
+			if absf(pf - fixed) <= _WALL_EPS and pa > lo + _WALL_EPS and pa < hi - _WALL_EPS:
+				vals.append(pa)
+	vals.sort()
+	var out := PackedFloat64Array()
+	for x in vals:
+		if out.is_empty() or x - out[out.size() - 1] > _WALL_EPS:
+			out.append(x)
+	return out
+
+
+# Stable random bits for a world point: the same point gives the same value
+# on every face that shares it, on every run and on every client. Picks
+# each quad's diagonal.
+static func _wall_hash(world: Vector3) -> int:
+	return hash(Vector3i((world * 64.0).round()))
+
+
+# World-space vertex offset: X from the (y, z) position, Y from (x, z) and Z
+# from (x, y), each its own 2D value noise (see _wall_noise). Being
+# continuous, two walls' copies of a shared corner get the same offset even
+# when their transforms round its position a hair differently.
+static func _wall_offset(world: Vector3) -> Vector3:
+	return Vector3(_wall_noise(world.y, world.z, 0) * _WALL_JITTER,
+		_wall_noise(world.x, world.z, 1) * _WALL_JITTER_Y,
+		_wall_noise(world.x, world.y, 2) * _WALL_JITTER)
+
+
+# -1..1: a random value at every _WALL_NOISE_CELL node of the (a, b) plane,
+# blended bilinearly between them; `channel` gives each axis its own values.
+static func _wall_noise(a: float, b: float, channel: int) -> float:
+	var g    := Vector2(a, b) / _WALL_NOISE_CELL
+	var base := Vector2i(g.floor())
+	var f    := g - Vector2(base)
+	var acc  := 0.0
+	for k in 4:
+		var o := Vector2i(k & 1, k >> 1)
+		var w := (f.x if o.x else 1.0 - f.x) * (f.y if o.y else 1.0 - f.y)
+		acc += w * float(hash(Vector3i(base.x + o.x, base.y + o.y, channel)) & 0xFFFF) / 65535.0
+	return acc * 2.0 - 1.0   # weights sum to 1
+
+
+# `rects` minus `hole`, as the same picture-frame slicing in 2D.
+static func _subtract_rect(rects: Array[Rect2], hole: Rect2) -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	for r in rects:
+		var c := r.intersection(hole)
+		if not c.has_area():
+			out.append(r)
+			continue
+		if c.position.x > r.position.x: out.append(Rect2(r.position.x, r.position.y, c.position.x - r.position.x, r.size.y))
+		if c.end.x < r.end.x:           out.append(Rect2(c.end.x, r.position.y, r.end.x - c.end.x, r.size.y))
+		if c.position.y > r.position.y: out.append(Rect2(c.position.x, r.position.y, c.size.x, c.position.y - r.position.y))
+		if c.end.y < r.end.y:           out.append(Rect2(c.position.x, c.end.y, c.size.x, r.end.y - c.end.y))
+	return out
+
+
+# Splits a wall into the solid local-frame boxes (x/z pre-rotation, y = 0 at
+# the wall's base) left after subtracting each of its openings — the same
+# AABB-minus-AABB "picture frame" slicing world_editor's _carve_box_list()
+# uses, so a window/door renders and collides as a real hole without a CSG
+# boolean.
+func _carve_wall_pieces(box: Dictionary) -> Array[AABB]:
+	var hx := box.half_x as float; var hz := box.half_z as float
+	var pieces: Array[AABB] = [_aabb(Vector3(-hx, 0.0, -hz), Vector3(hx, box.height as float, hz))]
+	for op: Dictionary in box.get("openings", []):
+		pieces = _subtract_box(pieces, _aabb(
+			Vector3(op.x_min as float, op.y_min as float, op.z_min as float),
+			Vector3(op.x_max as float, op.y_max as float, op.z_max as float)))
 	return pieces
+
+
+# `pieces` minus `hole`: each piece the hole cuts into is replaced by up to
+# six boxes around the cut (x sides, then z, then y). Slivers thinner than
+# 1e-4 (float rounding where boxes only touch) are dropped.
+static func _subtract_box(pieces: Array[AABB], hole: AABB) -> Array[AABB]:
+	var out: Array[AABB] = []
+	for b in pieces:
+		var c := b.intersection(hole)
+		if c.size.x < 1e-4 or c.size.y < 1e-4 or c.size.z < 1e-4:
+			out.append(b)
+			continue
+		var lo := b.position; var hi := b.end
+		var clo := c.position; var chi := c.end
+		for part in [
+				[lo, Vector3(clo.x, hi.y, hi.z)],
+				[Vector3(chi.x, lo.y, lo.z), hi],
+				[Vector3(clo.x, lo.y, lo.z), Vector3(chi.x, hi.y, clo.z)],
+				[Vector3(clo.x, lo.y, chi.z), Vector3(chi.x, hi.y, hi.z)],
+				[Vector3(clo.x, lo.y, clo.z), Vector3(chi.x, clo.y, chi.z)],
+				[Vector3(clo.x, chi.y, clo.z), Vector3(chi.x, hi.y, chi.z)]]:
+			var s: Vector3 = part[1] - part[0]
+			if s.x >= 1e-4 and s.y >= 1e-4 and s.z >= 1e-4:
+				out.append(AABB(part[0], s))
+	return out
+
+
+static func _aabb(lo: Vector3, hi: Vector3) -> AABB:
+	return AABB(lo, hi - lo)

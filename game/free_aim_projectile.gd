@@ -13,7 +13,10 @@ extends Node3D
 # Moves by directly setting position each physics tick (not move_and_slide),
 # so detection has to be a swept segment test — a plain Area3D/body_entered
 # overlap check isn't continuous and could tunnel through a thin wall between
-# ticks at these speeds.
+# ticks at these speeds. The sweep is a small sphere (not a zero-width ray) so
+# a shot that visibly grazes a monster still counts as touching it, and a
+# shot that starts already overlapping one (point-blank) stops at once — a
+# ray cast from inside a shape reports nothing.
 
 const COLLISION_LAYER_WORLD := 2   # matches WorldData.COLLISION_LAYER_WORLD
 const COLLISION_LAYER_ENTITY := 1  # Godot's implicit default layer — every
@@ -21,11 +24,15 @@ const COLLISION_LAYER_ENTITY := 1  # Godot's implicit default layer — every
                                     # sits here, since entity_manager.gd never
                                     # sets collision_layer explicitly
 const COLLISION_MASK := COLLISION_LAYER_WORLD | COLLISION_LAYER_ENTITY
+const HIT_RADIUS := 0.15
+const GROUP := &"free_aim_projectiles"
 
 var dir: Vector3
 var speed: float = 0.0
 var max_range: float = 0.0
+var shooter_id: int = 0
 var _exclude: Array[RID] = []
+var _shape := SphereShape3D.new()
 
 var _traveled: float = 0.0
 
@@ -33,11 +40,16 @@ var _traveled: float = 0.0
 # `exclude` should carry the shooter's own StaticBody3D RID so the shot can't
 # immediately register a hit on itself at spawn — mirrors the server's
 # `candidate == p.owner` exclusion in projectile_system.
-func launch(p_dir: Vector3, p_speed: float, p_max_range: float, exclude: Array[RID] = []) -> void:
+# `p_shooter_id` lets effects.gd find this shot again when the server reports
+# the hit itself (UnitHit) — see Effects._on_unit_hit.
+func launch(p_dir: Vector3, p_speed: float, p_max_range: float, exclude: Array[RID] = [], p_shooter_id: int = 0) -> void:
 	dir = p_dir
 	speed = p_speed
 	max_range = p_max_range
 	_exclude = exclude
+	shooter_id = p_shooter_id
+	_shape.radius = HIT_RADIUS
+	add_to_group(GROUP)
 
 
 func _physics_process(delta: float) -> void:
@@ -53,11 +65,18 @@ func _physics_process(delta: float) -> void:
 	var to := from + dir * step
 
 	var space_state := get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(from, to, COLLISION_MASK, _exclude)
-	var result := space_state.intersect_ray(query)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = _shape
+	query.transform = Transform3D(Basis(), from)
+	query.motion = to - from
+	query.collision_mask = COLLISION_MASK
+	query.exclude = _exclude
+	# [safe, unsafe] fractions of the motion; [1, 1] = nothing in the way,
+	# [0, 0] = already overlapping something at `from`.
+	var fractions := space_state.cast_motion(query)
 
-	if not result.is_empty():
-		global_position = result.position
+	if fractions[1] < 1.0:
+		global_position = from + (to - from) * fractions[1]
 		queue_free()
 		return
 

@@ -48,6 +48,13 @@ func _process(delta: float) -> void:
 		_e_held += delta
 		if _e_held >= _PICKUP_HOLD:
 			_e_held = -INF
+			# A chest we haven't looted (as far as the server has told us)
+			# wins over floor items; once it answers "opened"/"already
+			# opened" it drops out, so items on or under it stay reachable.
+			var chest_id := _pick_interactable_chest()
+			if chest_id != -1:
+				Network.send(Protocol.pkt_interact_entity(chest_id))
+				return
 			var item_id: int = -1
 			if floor_items != null:
 				item_id = _targeting.pick_aimed_item(floor_items._items)
@@ -59,6 +66,19 @@ func _process(delta: float) -> void:
 				_try_interact_frozenstarlight()
 	else:
 		_e_held = 0.0
+
+func _pick_interactable_chest() -> int:
+	if not _entity_manager.entities.has(GameState.player_net_id):
+		return -1
+	var player_pos: Vector3 = (_entity_manager.entities[GameState.player_net_id] as StaticBody3D).position
+	var candidates := {}
+	for net_id: int in _entity_manager.chests:
+		if _entity_manager.opened_chests.has(net_id):
+			continue
+		var body := _entity_manager.entities.get(net_id) as Node3D
+		if body != null and player_pos.distance_to(body.position) <= _INTERACT_RANGE:
+			candidates[net_id] = body
+	return _targeting.pick_aimed_item(candidates)
 
 func _is_item_in_pickup_range(item_id: int) -> bool:
 	if not _entity_manager.entities.has(GameState.player_net_id):

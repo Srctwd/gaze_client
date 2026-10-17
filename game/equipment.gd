@@ -7,6 +7,7 @@ const _OFFHAND_ROT := Vector3(0, 0, -90)
 const _HEAD_POS := Vector3(0, 1.7, 0)
 const _BACK_POS := Vector3(0, 1.0, -0.25)
 const _HIP_POS  := Vector3(0.25, 0.9, 0)
+const _TORSO_POS := Vector3(0, 1.2, 0)
 
 @onready var _entity_manager: Node = $"../EntityManager"
 
@@ -46,7 +47,21 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int) -
 		Protocol.SLOT_OFFHAND:
 			_set_hand_node(_get_or_create_offhand(body), prefab)
 		Protocol.SLOT_HEADGEAR:
-			_set_hand_node(_get_or_create_head(body), prefab)
+			var helmet := _set_hand_node(_get_or_create_head(body), prefab)
+			# The first-person camera sits on this same Head marker, i.e. inside
+			# the helmet — hide our own like the rest of the local body
+			# (entity_manager.gd: _make_body/set_first_person, which also
+			# toggles this node from then on since it lives under the body).
+			if helmet != null and net_id == GameState.player_net_id:
+				for mi in helmet.find_children("*", "MeshInstance3D", true, false):
+					(mi as MeshInstance3D).visible = not GameState.first_person
+		Protocol.SLOT_ARMOR:
+			var armor := _set_hand_node(_get_or_create_torso(body), prefab)
+			# Hidden on ourselves in first person, like the helmet and the
+			# rest of the local body.
+			if armor != null and net_id == GameState.player_net_id:
+				for mi in armor.find_children("*", "MeshInstance3D", true, false):
+					(mi as MeshInstance3D).visible = not GameState.first_person
 		Protocol.SLOT_BAG:
 			_set_hand_node(_get_or_create_back(body), prefab)
 		Protocol.SLOT_POUCH:
@@ -54,11 +69,11 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int) -
 
 # No prefab (res://assets/items/<Name>.tscn missing) means the item def has
 # no client-side representation yet — render nothing rather than guess.
-func _set_hand_node(parent: Node3D, prefab: PackedScene) -> void:
+func _set_hand_node(parent: Node3D, prefab: PackedScene) -> Node3D:
 	for c in parent.get_children():
 		c.queue_free()
 	if prefab == null:
-		return
+		return null
 	var node := prefab.instantiate()
 
 	# Equip anchors (HandGrip/OffHandGrip/Head/Back/Hip) sit deep inside the
@@ -85,6 +100,7 @@ func _set_hand_node(parent: Node3D, prefab: PackedScene) -> void:
 	wrapper.transform = Transform3D(Basis().scaled(correction), -(correction * grip_origin))
 	wrapper.add_child(node)
 	parent.add_child(wrapper)
+	return wrapper
 
 func _get_or_create_hand(body: StaticBody3D) -> Node3D:
 	# Prefer a bone-attached HandGrip marker baked into the model (e.g.
@@ -141,6 +157,23 @@ func _get_or_create_back(body: StaticBody3D) -> Node3D:
 	back.position = _BACK_POS
 	body.add_child(back)
 	return back
+
+func _get_or_create_torso(body: StaticBody3D) -> Node3D:
+	# Body armor sits at the chest bone's origin — the same BoneAttachment3D
+	# that holds the Back marker (ManlyMan.tscn), so it follows the torso.
+	# Falls back to a fixed offset on models without that marker.
+	var torso := body.find_child("Torso", true, false) as Node3D
+	if torso != null:
+		return torso
+	torso = Node3D.new()
+	torso.name = "Torso"
+	var back := body.find_child("Back", true, false) as Node3D
+	if back != null and back.get_parent() is BoneAttachment3D:
+		back.get_parent().add_child(torso)
+	else:
+		torso.position = _TORSO_POS
+		body.add_child(torso)
+	return torso
 
 func _get_or_create_hip(body: StaticBody3D) -> Node3D:
 	# Prefer a bone-attached Hip marker baked into the model (e.g.

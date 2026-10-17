@@ -5,15 +5,13 @@ signal player_head_moved(pos: Vector3)
 
 var entities:  Dictionary = {}  # net_id (int) -> StaticBody3D
 var _xp_orbs:  Array     = []  # {node: GPUParticles3D, target_id: int}
-var _xp_pmat:  ParticleProcessMaterial
-var _xp_mesh:  SphereMesh
 
 # Every entity's most recent server position/facing — _process() smoothly
 # eases each body toward these instead of snapping, since UNIT_POS arrives at
 # the server's tick rate, not every rendered frame. This includes the local
 # player: player_moved is re-emitted each frame with the eased position, so
 # the camera (camera_controller.gd's follow()) tracks the same smoothing.
-var _targets: Dictionary = {}  # net_id (int) -> {pos, rot_y, anim_state, is_moving}
+var _targets: Dictionary = {}  # net_id (int) -> {pos, rot_y, pitch, anim_state, is_moving}
 
 const _PLAYER_SCENE := preload("res://player.tscn")
 
@@ -21,6 +19,10 @@ const _PLAYER_SCENE := preload("res://player.tscn")
 # (only some models do — everything else silently no-ops in _drive_animation).
 var _anim_players: Dictionary = {}
 var _current_anim: Dictionary = {}  # net_id -> currently playing clip name
+
+# net_id -> PitchTilt on that body's skeleton, for other units with a humanoid
+# spine (see _attach_pitch_tilt). Fed tgt.pitch every frame in _process.
+var _pitch_tilts: Dictionary = {}
 
 # Local player's bone-attached Head Marker3D (assets/monsters/ManlyMan.tscn),
 # cached on spawn so the FP camera can track the actual head bone instead of
@@ -50,6 +52,15 @@ const _ANIM_CLIP := {
 # and looping one would never stop.
 const _LOCOMOTION_CLIPS := ["Idle", "Walk", "Jump", "Fall", "Swim"]
 
+# Chests are units that never move. Whether one is open is per player and
+# never sent ahead of time — it's learned from the server's ChestResult to our
+# own E-press, so a chest we looted in an earlier session shows closed until
+# we try it once more and the server answers "already opened".
+var chests:        Dictionary = {}  # net_id -> true, every chest unit currently known
+var opened_chests: Dictionary = {}  # net_id -> true, chests the server said we've looted
+var _chest_anims:  Dictionary = {}  # net_id -> AnimationPlayer (Closed/Open clips)
+const _CHEST_SCALE := 0.5
+
 var _mesh_by_type:  Dictionary = {}  # unit_type (int) -> PackedScene
 var _slime_scenes: Array     = []  # index by (variant >> 6) & 0x3
 
@@ -63,6 +74,7 @@ const _NPC_SPEECH_HEIGHT     := 1.4  # body.position is ground/feet level (see _
 const _NPC_SPEECH_JITTER     := 0.3  # random x/y offset so replies don't always land in the same spot
 const _NPC_SPEECH_HIDE_DELAY := 6.0
 const _NPC_SPEECH_COLOR      := Color.YELLOW
+const _CHEST_SPEECH_COLOR    := Color.WHITE  # a chest "speaking", e.g. "Not enough room"
 const _NPC_HIGHLIGHT_COLOR   := Color(0.55, 0.8, 1.0)  # lightish blue
 const _NPC_SPEECH_FONT_SIZE  := 16
 
@@ -92,7 +104,10 @@ const _GROUND_RADIUS := {
 	Protocol.UNIT_SNAKE:     0.4,
 	Protocol.UNIT_GOBLIN:    0.35,
 	Protocol.UNIT_DEMON:     0.5,
+	Protocol.UNIT_RAT:       0.3,
 	Protocol.UNIT_NPC:       0.5,
+	Protocol.UNIT_VALKYRIE:  0.5,
+	Protocol.UNIT_CHEST:     0.0,  # placed, no RigidBody — y is the floor itself
 }
 
 # 4 hues per unit type, indexed by headgear bits (variant >> 6) & 0x3
@@ -124,7 +139,10 @@ func _ready() -> void:
 	_mesh_by_type[Protocol.UNIT_SNAKE]     = load("res://assets/snake.glb")
 	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/meshes/goblin01.glb")
 	_mesh_by_type[Protocol.UNIT_DEMON]     = load("res://assets/monsters/low_poly_demon_man_v_3.tscn")
+	_mesh_by_type[Protocol.UNIT_RAT]       = load("res://assets/monsters/Rat.tscn")
 	_mesh_by_type[Protocol.UNIT_NPC]       = load("res://assets/npcs/Feras.tscn")
+	_mesh_by_type[Protocol.UNIT_VALKYRIE]  = load("res://assets/monsters/Valkyrie.tscn")
+	_mesh_by_type[Protocol.UNIT_CHEST]     = load("res://assets/meshes/chest01.glb")
 	_slime_scenes = [
 		load("res://assets/monsters/GreenSlime.tscn"),  # 0 green
 		load("res://assets/slime_blue.glb"),             # 1 blue
@@ -139,8 +157,9 @@ func _ready() -> void:
 	Network.level_up.connect(_on_level_up)
 	Network.action_ok.connect(_on_action_ok)
 	Network.npc_speech.connect(_on_npc_speech)
+	Network.chest_result.connect(_on_chest_result)
+	Network.login_ok.connect(func(_id: int): opened_chests.clear())
 	GameState.first_person_changed.connect(set_first_person)
-	_build_xp_materials()
 	call_deferred(&"_prewarm_xp_shader")
 
 	_npc_speech_canvas = CanvasLayer.new()
@@ -153,12 +172,15 @@ func _on_unit_destroyed(net_id: int) -> void:
 		_targets.erase(net_id)
 		_anim_players.erase(net_id)
 		_current_anim.erase(net_id)
+		_pitch_tilts.erase(net_id)
 		if _npc_labels.has(net_id):
 			_npc_labels[net_id].queue_free()  # also frees its child Timer, see _on_npc_speech
 		_npc_labels.erase(net_id)
 		_npc_offsets.erase(net_id)
 		_npc_active.erase(net_id)
 		_npc_timers.erase(net_id)
+		chests.erase(net_id)
+		_chest_anims.erase(net_id)
 
 func _on_npc_speech(npc_net_id: int, _target_player_net_id: int, text: String) -> void:
 	if not entities.has(npc_net_id):
@@ -173,7 +195,8 @@ func _on_npc_speech(npc_net_id: int, _target_player_net_id: int, text: String) -
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 		label.add_theme_font_size_override("normal_font_size", _NPC_SPEECH_FONT_SIZE)
-		label.add_theme_color_override("default_color", _NPC_SPEECH_COLOR)
+		label.add_theme_color_override("default_color",
+			_CHEST_SPEECH_COLOR if chests.has(npc_net_id) else _NPC_SPEECH_COLOR)
 		label.add_theme_constant_override("outline_size", 3)
 		label.add_theme_color_override("font_outline_color", Color.BLACK)
 		label.visible = false
@@ -220,12 +243,22 @@ func _process(delta: float) -> void:
 			continue
 		var tgt: Dictionary = _targets[net_id]
 		body.position   = body.position.lerp(tgt.pos, t)
-		body.rotation.y = lerp_angle(body.rotation.y, tgt.rot_y, t)
 		_drive_animation(net_id, tgt)
 		if net_id == GameState.player_net_id:
+			# Own body faces the exact local camera yaw — the server's UnitPos
+			# yaw is rounded to 11.25° steps, fine for others but visibly
+			# steppy on yourself. Same +PI convention as _on_unit_pos.
+			body.rotation.y = _npc_speech_camera.yaw + PI
 			player_moved.emit(body.position)
 			if _player_head:
 				player_head_moved.emit(_player_head.global_position)
+		elif chests.has(net_id):
+			body.rotation.y = tgt.rot_y
+		else:
+			body.rotation.y = lerp_angle(body.rotation.y, tgt.rot_y, t)
+			var tilt := _pitch_tilts.get(net_id) as PitchTilt
+			if tilt:
+				tilt.target_pitch = tgt.pitch
 
 	var i := _xp_orbs.size() - 1
 	while i >= 0:
@@ -274,64 +307,25 @@ func _on_xp_gained(monster_net_id: int, player_ids: Array) -> void:
 		if entities.has(pid):
 			_spawn_xp_orb(from, pid)
 
-const _XP_COLOR := Color(1.0, 1.0, 1.0, 0.33)
+# White droplet swarm (assets/effects/xp_sparkle.tscn, same look as the blood
+# splatter) that streams around the orb as it flies to the player.
+const _XP_SPARKLE_SCENE := preload("res://assets/effects/xp_sparkle.tscn")
 
-func _build_xp_materials() -> void:
-	var glow := StandardMaterial3D.new()
-	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glow.albedo_color = _XP_COLOR
-	glow.emission_enabled = true
-	glow.emission = Color(_XP_COLOR.r, _XP_COLOR.g, _XP_COLOR.b)
-	glow.emission_energy_multiplier = 2.0
-
-	_xp_mesh = SphereMesh.new()
-	_xp_mesh.radius = 0.25
-	_xp_mesh.height = .25
-	_xp_mesh.material = glow
-
-	_xp_pmat = ParticleProcessMaterial.new()
-	_xp_pmat.direction = Vector3(0, 1, 0)
-	_xp_pmat.spread = 180.0
-	_xp_pmat.initial_velocity_min = 1.0
-	_xp_pmat.initial_velocity_max = 2.5
-	_xp_pmat.gravity = Vector3.ZERO
-	_xp_pmat.damping_min = 4.0
-	_xp_pmat.damping_max = 6.0
-	_xp_pmat.turbulence_enabled = true
-	_xp_pmat.turbulence_noise_strength = 2.5
-	_xp_pmat.turbulence_noise_scale = 3.0
-	_xp_pmat.scale_min = 0.2
-	_xp_pmat.scale_max = 0.2
-	_xp_pmat.color = _XP_COLOR
-	_xp_pmat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	_xp_pmat.emission_sphere_radius = 0.3
-
+# Runs the prefab once off-screen at startup so the first real XP orb doesn't
+# hitch on shader compilation.
 func _prewarm_xp_shader() -> void:
-	var warmup := GPUParticles3D.new()
+	var warmup := _XP_SPARKLE_SCENE.instantiate() as GPUParticles3D
 	warmup.position = Vector3(0.0, -9999.0, 0.0)
-	warmup.process_material = _xp_pmat
-	warmup.draw_pass_1 = _xp_mesh
 	warmup.amount = 1
-	warmup.lifetime = 0.1
 	warmup.one_shot = true
 	warmup.emitting = true
 	get_parent().add_child(warmup)
 	warmup.finished.connect(warmup.queue_free)
 
 func _spawn_xp_orb(from: Vector3, target_net_id: int) -> void:
-	var particles := GPUParticles3D.new()
+	var particles := _XP_SPARKLE_SCENE.instantiate() as GPUParticles3D
 	particles.position = from
-	particles.local_coords = true
-	particles.amount = 9
-	particles.lifetime = 1.5
-	particles.one_shot = false
-	particles.preprocess = particles.lifetime
 	particles.emitting = true
-	particles.visibility_aabb = AABB(Vector3(-3, -3, -3), Vector3(6, 6, 6))
-	particles.process_material = _xp_pmat
-	particles.draw_pass_1 = _xp_mesh
-
 	get_parent().add_child(particles)
 	_xp_orbs.append({node = particles, target_id = target_net_id, speed = 1.0})
 
@@ -349,8 +343,12 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _
 	body.position = pos
 	get_parent().add_child(body)
 	entities[net_id] = body
+	if unit_type == Protocol.UNIT_CHEST:
+		_setup_chest(net_id, body)
+		return
 	_apply_variant(body, unit_type, variant)
 	_cache_anim_player(net_id, body)
+	_attach_pitch_tilt(net_id, body)
 	if unit_type != Protocol.UNIT_PLAYER and unit_type != Protocol.UNIT_NPC:
 		_delay_monster_reveal(body)
 
@@ -366,8 +364,9 @@ func _delay_monster_reveal(body: Node3D) -> void:
 				mi.visible = true
 	)
 
-func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, anim_state: int) -> void:
-	var rot := rot_y + PI
+func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, pitch: float, anim_state: int) -> void:
+	# Chest models are authored facing the server's own yaw convention.
+	var rot := rot_y if unit_type == Protocol.UNIT_CHEST else rot_y + PI
 	pos.y -= _GROUND_RADIUS.get(unit_type, 0.5)
 	if not entities.has(net_id):
 		var body := _make_body(net_id, unit_type, variant)
@@ -377,15 +376,19 @@ func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y
 		body.rotation.y = rot
 		get_parent().add_child(body)
 		entities[net_id] = body
-		_apply_variant(body, unit_type, variant)
-		_cache_anim_player(net_id, body)
+		if unit_type == Protocol.UNIT_CHEST:
+			_setup_chest(net_id, body)
+		else:
+			_apply_variant(body, unit_type, variant)
+			_cache_anim_player(net_id, body)
+			_attach_pitch_tilt(net_id, body)
 
 	# Moving is inferred from how far this tick's position is from the last
 	# one — the server doesn't split Ground into idle/walk/run on its own.
 	var is_moving := false
 	if _targets.has(net_id):
 		is_moving = (pos - (_targets[net_id].pos as Vector3)).length() > _MOVE_EPS
-	_targets[net_id] = {pos = pos, rot_y = rot, anim_state = anim_state, is_moving = is_moving}
+	_targets[net_id] = {pos = pos, rot_y = rot, pitch = pitch, anim_state = anim_state, is_moving = is_moving}
 
 func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 	var body: StaticBody3D
@@ -407,6 +410,17 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 		if unit_type == Protocol.UNIT_SLIME:
 			mesh_node.scale = Vector3(0.5, 0.5, 0.5)
 		body.add_child(mesh_node)
+		if unit_type == Protocol.UNIT_CHEST:
+			mesh_node.scale = Vector3.ONE * _CHEST_SCALE
+			# Same footprint as the server's wall-style collider (chest.cpp).
+			var box := BoxShape3D.new()
+			box.size = Vector3(1.25, 0.77, 0.74)
+			var box_col := CollisionShape3D.new()
+			box_col.shape = box
+			box_col.position = Vector3(0.0, 0.385, -0.24)
+			body.add_child(box_col)
+			body.set_meta("net_id", net_id)
+			return body
 		var shape := CylinderShape3D.new()
 		if unit_type == Protocol.UNIT_SLIME:
 			shape.radius = 0.3
@@ -427,6 +441,37 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 	body.set_meta("net_id", net_id)
 	return body
 
+func _setup_chest(net_id: int, body: Node3D) -> void:
+	chests[net_id] = true
+	var players := body.find_children("*", "AnimationPlayer", true, false)
+	if not players.is_empty():
+		_chest_anims[net_id] = players[0]
+	_set_chest_lid(net_id, opened_chests.has(net_id), false)
+
+# Plays the lid open (animate) or snaps straight to its end pose — a chest we
+# already know we looted, coming back into view or answered "already opened".
+func _set_chest_lid(net_id: int, open: bool, animate: bool) -> void:
+	var player := _chest_anims.get(net_id) as AnimationPlayer
+	if player == null:
+		return
+	var clip := "Open" if open else "Closed"
+	if not player.has_animation(clip):
+		return
+	player.get_animation(clip).loop_mode = Animation.LOOP_NONE
+	player.play(clip)
+	if not animate:
+		player.seek(player.current_animation_length, true)
+
+func _on_chest_result(chest_net_id: int, result: int) -> void:
+	match result:
+		Protocol.CHEST_OPENED:
+			opened_chests[chest_net_id] = true
+			_set_chest_lid(chest_net_id, true, true)
+		Protocol.CHEST_ALREADY_OPENED:
+			opened_chests[chest_net_id] = true
+			_set_chest_lid(chest_net_id, true, false)
+		# CHEST_NO_ROOM: the chest says so itself via NpcSpeech.
+
 func _apply_variant(body: Node3D, unit_type: int, variant: int) -> void:
 	var palette: Array = _VARIANT_PALETTES.get(unit_type, [])
 	if palette.is_empty():
@@ -442,6 +487,18 @@ func _apply_variant(body: Node3D, unit_type: int, variant: int) -> void:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = tint
 		mi.material_override = mat
+
+# Not for the local player: the FP camera follows the Head bone (_player_head),
+# so bending our own spine would move our eye.
+func _attach_pitch_tilt(net_id: int, body: Node3D) -> void:
+	if net_id == GameState.player_net_id:
+		return
+	var skeleton := body.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton == null or not PitchTilt.has_spine(skeleton):
+		return
+	var tilt := PitchTilt.new()
+	skeleton.add_child(tilt)
+	_pitch_tilts[net_id] = tilt
 
 func _cache_anim_player(net_id: int, body: Node3D) -> void:
 	var players := body.find_children("*", "AnimationPlayer", true, false)

@@ -32,7 +32,7 @@ func _select_target() -> void:
 	var second_score := INF
 
 	for net_id in _entity_manager.entities:
-		if net_id == GameState.player_net_id:
+		if net_id == GameState.player_net_id or _entity_manager.chests.has(net_id):
 			continue
 		var body  := _entity_manager.entities[net_id] as StaticBody3D
 		var score := _score_candidate(body.position, player_pos, screen_center)
@@ -75,7 +75,7 @@ func pick_aimed_unit() -> int:
 	var best_id    := -1
 	var best_score := INF
 	for net_id in _entity_manager.entities:
-		if net_id == GameState.player_net_id:
+		if net_id == GameState.player_net_id or _entity_manager.chests.has(net_id):
 			continue
 		var body := _entity_manager.entities[net_id] as StaticBody3D
 		var score := _score_candidate(body.position, player_pos, screen_center)
@@ -123,7 +123,7 @@ func _set_highlight(net_id: int, on: bool) -> void:
 	if mi == null:
 		return
 	if on:
-		var orig := mi.material_override as StandardMaterial3D
+		var orig := Ps2.source_of(mi.material_override) as StandardMaterial3D
 		var base_color := Color(1, 1, 1)
 		if orig:
 			base_color = orig.albedo_color * Color(1, 1, 1)

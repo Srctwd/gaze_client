@@ -33,6 +33,12 @@ const BAG_UNEQUIP_REQUEST      := 0x1D
 const BAG_SLOT_SWAP_REQUEST    := 0x1E
 const INSPECT_ITEM_REQUEST     := 0x1F
 const INSPECT_ITEM_RESPONSE    := 0x20
+const INTERACT_ENTITY          := 0x22
+const CHEST_RESULT             := 0x23
+# ChestResult codes (ChestOpenResult, stone_gaze src/systems/chest.h)
+const CHEST_OPENED         := 0
+const CHEST_ALREADY_OPENED := 1
+const CHEST_NO_ROOM        := 2
 
 # ── Gear slots (must match GearSlot enum in inventory.h) ───────────────────
 const SLOT_MAINHAND := 0
@@ -64,6 +70,9 @@ const UNIT_SNAKE     := 0x05
 const UNIT_GOBLIN    := 0x06
 const UNIT_DEMON     := 0x07
 const UNIT_NPC       := 0x08
+const UNIT_RAT       := 0x09
+const UNIT_VALKYRIE  := 0x0A  # models.json "Valkyrie" on the server
+const UNIT_CHEST     := 0x0B  # models.json "Chest" — a placed chest, never moves
 
 # ── Locomotion animation state (AnimState enum, network/protocol.h) ────────
 # Carried on SpawnUnit/UnitPos. Ground has no separate idle/walk/run signal —
@@ -72,6 +81,17 @@ const ANIM_GROUND := 0
 const ANIM_JUMP   := 1
 const ANIM_FALL   := 2
 const ANIM_SWIM   := 3
+
+# ── UnitPos orientation byte (pack_orient, network/protocol.h) ───────────
+# Low 5 bits = yaw index (32 steps), high 3 bits = index into
+# ORIENT_PITCH_LEVELS. Display only — shots use the exact floats server-side.
+const ORIENT_YAW_STEPS := 32
+const ORIENT_PITCH_LEVELS := [-1.0, -0.45, -0.15, 0.0, 0.15, 0.45, 1.0]
+
+static func unpack_orient(orient: int) -> Vector2:
+	var yaw := float(orient & 0x1F) * TAU / ORIENT_YAW_STEPS
+	var pitch_index := mini(orient >> 5, ORIENT_PITCH_LEVELS.size() - 1)
+	return Vector2(yaw, ORIENT_PITCH_LEVELS[pitch_index])
 
 # ── Action types (ActionType enum) ────────────────────────────────────────
 const ACTION_NOTHING := 0
@@ -232,6 +252,13 @@ static func pkt_interact(obj_type: int, x: float, z: float) -> PackedByteArray:
 	pkt[1] = obj_type
 	pkt.encode_float(2, x)
 	pkt.encode_float(6, z)
+	return pkt
+
+static func pkt_interact_entity(net_id: int) -> PackedByteArray:
+	var pkt := PackedByteArray()
+	pkt.resize(5)
+	pkt[0] = INTERACT_ENTITY
+	pkt.encode_u32(1, net_id)
 	return pkt
 
 static func pkt_learn_talent(node_id: int) -> PackedByteArray:
