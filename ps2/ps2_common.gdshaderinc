@@ -13,12 +13,14 @@ global uniform vec3  ps2_light_col0;
 global uniform vec3  ps2_light_col1;
 global uniform vec3  ps2_light_col2;
 global uniform vec3  ps2_ambient;
-// Point lights, nearest the camera first (ps2.gd uploads up to MAX_POINTS):
+// Point lights in view, nearest the camera first (ps2.gd uploads up to MAX_POINTS):
 // light i is (pos, range) at texel 2i and (colour, 0) at texel 2i + 1.
 global uniform sampler2D ps2_point_tex;
 global uniform int   ps2_point_count;
-global uniform float ps2_point_tail;     // point-light far glow strength, 0 = original falloff only
-global uniform float ps2_point_reach;    // distance scale of that glow
+global uniform float ps2_point_flat;     // fraction of a point light's range lit at full strength (see ps2_falloff)
+global uniform float ps2_point_wrap;     // point-light N·L wrap: 0 = Lambert, 1 = half-Lambert (see ps2_point)
+global uniform bool  ps2_godot_points;   // test: Godot's own per-pixel OmniLights instead of the table (see light())
+global uniform float ps2_godot_point_gain;
 global uniform vec3  ps2_fog_color;
 global uniform float ps2_fog_near;
 global uniform float ps2_fog_far;
@@ -33,27 +35,26 @@ instance uniform float ps2_sun_scale = 1.0;
 vec3 ps2_to_gamma(vec3 c)  { return pow(max(c, vec3(0.0)), vec3(1.0 / 2.2)); }
 vec3 ps2_to_linear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
 
-// §4.2 attenuation: the classic 1 / (k0 + k2·d²) with k0 = k2 = 1 (one DIV
-// on VU1), windowed so it reaches exactly 0 at the light's range. Pools
-// light near its source the way Godot's own omni falloff does. Beyond that
-// a dim tail takes over — ps2_point_tail / (1 + (d / ps2_point_reach)²) —
-// so the light carries farther without changing how it looks up close (the
-// original curve is the brighter of the two out to a couple of units).
-// ps2_point_tail = 0 gives the original falloff alone.
+// §4.2 attenuation, as a flat-topped pool rather than the classic
+// 1 / (k0 + k2·d²) peak: full strength out to ps2_point_flat of the light's
+// range, then a smoothstep down to exactly 0 at the range, so a torch lights
+// an even spot instead of a hot centre.
 float ps2_falloff(float dist, float range) {
 	float x = dist / max(range, 0.0001);
-	float window = clamp(1.0 - x * x * x * x, 0.0, 1.0);
-	float r = dist / max(ps2_point_reach, 0.0001);
-	return window * window * max(1.0 / (1.0 + dist * dist), ps2_point_tail / (1.0 + r * r));
+	return 1.0 - smoothstep(min(ps2_point_flat, 0.999), 1.0, x);
 }
 
 // Point light folded into a directional one, §4.2. `at` is the object centre
 // for models (per-object, as the EE did it) or the vertex for scenery.
+// N·L is wrapped by ps2_point_wrap: a torch a few units up hits the ground
+// around it at a grazing angle, and plain Lambert left the ground dark a few
+// units out whatever the range.
 vec3 ps2_point(vec3 n, vec3 at, vec3 pos, vec3 col, float range) {
 	vec3  v    = pos - at;
 	float dist = length(v);
 	float att  = ps2_falloff(dist, range);
-	return col * att * max(dot(n, v / max(dist, 0.0001)), 0.0);
+	float ndl  = (dot(n, v / max(dist, 0.0001)) + ps2_point_wrap) / (1.0 + ps2_point_wrap);
+	return col * att * max(ndl, 0.0);
 }
 
 // §4.1: d = max(L·n, 0); lit = ambient + C·d (+ point lights).
@@ -62,11 +63,15 @@ vec3 ps2_point(vec3 n, vec3 at, vec3 pos, vec3 col, float range) {
 vec3 ps2_light_rest(vec3 n, vec3 at, float dir_scale, float ambient_scale) {
 	vec2 d = max(vec2(dot(n, ps2_light_dir1), dot(n, ps2_light_dir2)), 0.0) * dir_scale;
 	vec3 lit = ps2_ambient * ambient_scale + ps2_light_col1 * d.x + ps2_light_col2 * d.y;
+	// Point lights don't add up: each spot takes the brightest one reaching
+	// it (per channel), so overlapping torches are no brighter than one.
+	vec3 points = vec3(0.0);
 	for (int i = 0; i < ps2_point_count; i++) {
 		vec4 pr = texelFetch(ps2_point_tex, ivec2(i * 2, 0), 0);
 		vec4 c  = texelFetch(ps2_point_tex, ivec2(i * 2 + 1, 0), 0);
-		lit += ps2_point(n, at, pr.xyz, c.rgb, pr.w);
+		points = max(points, ps2_point(n, at, pr.xyz, c.rgb, pr.w));
 	}
+	lit += points;
 	return lit;
 }
 
@@ -115,10 +120,20 @@ vec3 ps2_apply_fog(vec3 c, float fog) {
 // sets DIFFUSE_LIGHT to the sun's shadow factor, so the result is exactly
 // mix(shade, lit, shadow): identical to the unshaded look in full sun.
 // Render modes needed: ambient_light_disabled, specular_disabled.
+//
+// With ps2_godot_points on (a test, not PS2), ps2.gd uploads no point lights
+// and Godot's OmniLights are added per pixel instead, as Godot's own Lambert
+// on the fragment's texture: SPECULAR_LIGHT is added untouched, while
+// DIFFUSE_LIGHT would be scaled by ALBEDO (= lit - shade).
+
+varying vec3 ps2_omni_base;   // linear texture colour, fogged; the fragment sets it
 
 void light() {
 	vec3 sun_view = normalize(mat3(VIEW_MATRIX) * ps2_light_dir0);
 	if (LIGHT_IS_DIRECTIONAL && dot(LIGHT, sun_view) > 0.999) {
 		DIFFUSE_LIGHT += vec3(mix(1.0, ATTENUATION, ps2_shadow_strength));
+	} else if (!LIGHT_IS_DIRECTIONAL && ps2_godot_points) {
+		SPECULAR_LIGHT += ps2_omni_base * LIGHT_COLOR * ATTENUATION
+				* max(dot(NORMAL, LIGHT), 0.0) * ps2_godot_point_gain / PI;
 	}
 }

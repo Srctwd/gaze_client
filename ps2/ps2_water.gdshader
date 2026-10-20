@@ -26,6 +26,7 @@ void fragment() {
 	float w  = sin(uv.x + TIME * wave_speed) * cos(uv.y + TIME * wave_speed * 0.7) * 0.04;
 	vec3  lit   = ps2_to_linear(ps2_apply_fog(ps2_modulate(water_color.rgb, v_light),    v_fog));
 	vec3  shade = ps2_to_linear(ps2_apply_fog(ps2_modulate(water_color.rgb, v_light_ns), v_fog));
+	ps2_omni_base = ps2_to_linear(water_color.rgb) * v_fog;
 	EMISSION  = shade;
 	ALBEDO    = max(lit - shade, vec3(0.0));
 	SPECULAR  = 0.0;

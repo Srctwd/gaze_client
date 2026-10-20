@@ -30,16 +30,16 @@ var enabled_at_start := false
 var internal_lines   := 448          # PS2 vertical resolution (448 or 512)
 var sun_gain         := 1.75         # noon sun (energy 0.2) → ~0.35
 var ambient_gain     := 0.6
-var point_gain       := 1.5          # point-light brightness in PS2 mode (1 = raw colour × energy); level-up flash (12) clips to white
-# Dim far glow added past the point-light falloff (see ps2_falloff), for more
-# light radius. Up close the original curve is the brighter one, so the look
-# right at the light is unchanged. point_tail = 0 turns it off (original).
+var point_gain       := 0.4          # point-light brightness in PS2 mode (1 = raw colour × energy); level-up flash (12) clips to white
 # Godot's lighting saturates a warm light toward white near its source; the
 # GS vertex colour can't, so the PS2 path blends point-light colour this far
 # toward white (0 = the light's own colour).
 var point_white      := 0.15
-var point_tail       := 0.35
-var point_reach      := 20.0
+var point_range      := 1.0          # PS2 mode lights reach this × their omni_range, fading to 0 there (torches don't add up, so wider doesn't mean brighter)
+var point_flat       := 0.6          # fraction of the reach lit at full strength before fading out (0 = fades from the centre, → 1 = hard edge)
+var point_wrap       := 2.0          # point-light N·L wrap: 0 = Lambert (ground goes dark a few units from a torch, its light grazes it), 1 = half-Lambert, higher = more even
+var godot_points     := true         # test: light with Godot's own OmniLights (per pixel) instead of the PS2 point-light table
+var godot_point_gain := 1.0          # their brightness (1 = as Godot draws them without PS2 mode)
 var sun_energy_ref   := 0.2          # sun_moon_controller.SUN_ENERGY_MAX
 var cave_ambient     := 1.67         # caves get the full scene ambient (× ambient_gain 0.6 ≈ 1.0); less leaves the torch as the only light, so caves go red
 var shadow_strength  := 0.5          # sun shadow map on top of PS2 light (0 = off)
@@ -61,7 +61,7 @@ var _particles   := {}   # GPUParticles3D / CPUParticles3D ids
 var _tex_cache   := {}   # texture id + flags -> paletted ImageTexture
 var _dir_lights  := {}
 var _omni_lights := {}
-const MAX_POINTS := 32   # point lights uploaded per frame; keep in sync with ps2_common.gdshaderinc
+const MAX_POINTS := 64   # point lights uploaded per frame (the table's size)
 var _point_img:   Image          # the light table (see the light set below)
 var _point_tex:   ImageTexture
 var _world_env: WorldEnvironment
@@ -190,16 +190,20 @@ func _update_globals() -> void:
 	RenderingServer.global_shader_parameter_set("ps2_subpixel", subpixel)
 
 	# The EE picked the strongest few point lights per object; here the
-	# MAX_POINTS nearest the camera stand in for that choice. Scenery is lit
-	# per vertex, so every one of them shows: with only two slots a town full
-	# of torches went dark except for the two nearest the player.
+	# MAX_POINTS nearest the camera stand in for that choice, out of the ones
+	# whose range reaches into the view. Scenery is lit per vertex, so every
+	# one of them shows. Without the frustum test, lights behind the camera or
+	# indoors took the slots and far torch posts only lit up up close.
 	var cam := get_viewport().get_camera_3d()
+	var frustum: Array[Plane] = []
+	if cam != null:
+		frustum = cam.get_frustum()
 	var omnis: Array[OmniLight3D] = []
 	for id in _omni_lights.keys():
 		var l := instance_from_id(id) as OmniLight3D
 		if l == null:
 			_omni_lights.erase(id)
-		elif l.is_visible_in_tree() and l.light_energy > 0.0:
+		elif l.is_visible_in_tree() and l.light_energy > 0.0 and _reaches_view(frustum, l.global_position, l.omni_range * point_range):
 			omnis.append(l)
 	if cam != null:
 		var eye := cam.global_position
@@ -210,17 +214,28 @@ func _update_globals() -> void:
 		_point_img = Image.create_empty(MAX_POINTS * 2, 1, false, Image.FORMAT_RGBAF)
 		_point_tex = ImageTexture.create_from_image(_point_img)
 		RenderingServer.global_shader_parameter_set("ps2_point_tex", _point_tex)
-	var count := mini(omnis.size(), MAX_POINTS)
+	var count := 0 if godot_points else mini(omnis.size(), MAX_POINTS)
 	for i in count:
 		var l := omnis[i]
 		var p := l.global_position
 		var c := _vec(l.light_color.lerp(Color.WHITE, point_white)) * l.light_energy * point_gain
-		_point_img.set_pixel(i * 2, 0, Color(p.x, p.y, p.z, l.omni_range))
+		_point_img.set_pixel(i * 2, 0, Color(p.x, p.y, p.z, l.omni_range * point_range))
 		_point_img.set_pixel(i * 2 + 1, 0, Color(c.x, c.y, c.z, 0.0))
 	_point_tex.update(_point_img)
 	RenderingServer.global_shader_parameter_set("ps2_point_count", count)
-	RenderingServer.global_shader_parameter_set("ps2_point_tail", point_tail)
-	RenderingServer.global_shader_parameter_set("ps2_point_reach", point_reach)
+	RenderingServer.global_shader_parameter_set("ps2_point_flat", point_flat)
+	RenderingServer.global_shader_parameter_set("ps2_point_wrap", point_wrap)
+	RenderingServer.global_shader_parameter_set("ps2_godot_points", godot_points)
+	RenderingServer.global_shader_parameter_set("ps2_godot_point_gain", godot_point_gain)
+
+
+# A light's sphere of influence touches the view: inside or across every
+# frustum plane (their normals point out of the frustum).
+static func _reaches_view(frustum: Array[Plane], pos: Vector3, radius: float) -> bool:
+	for plane in frustum:
+		if plane.distance_to(pos) > radius:
+			return false
+	return true
 
 
 func _env() -> Environment:

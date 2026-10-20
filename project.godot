@@ -82,11 +82,19 @@ ps2_point_count={
 "type": "int",
 "value": 0
 }
-ps2_point_tail={
+ps2_point_flat={
 "type": "float",
 "value": 0.0
 }
-ps2_point_reach={
+ps2_point_wrap={
+"type": "float",
+"value": 0.0
+}
+ps2_godot_points={
+"type": "bool",
+"value": false
+}
+ps2_godot_point_gain={
 "type": "float",
 "value": 1.0
 }

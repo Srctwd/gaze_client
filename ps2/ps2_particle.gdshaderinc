@@ -25,11 +25,13 @@ void vertex() {
 	if (lit) {
 		vec3 at = MODEL_MATRIX[3].xyz;
 		v_light = ps2_ambient + (ps2_light_col0 + ps2_light_col1 + ps2_light_col2) * 0.5 * ps2_sun_scale;
+		vec3 points = vec3(0.0);   // brightest light, not the sum (see ps2_light_rest)
 		for (int i = 0; i < ps2_point_count; i++) {
 			vec4 pr = texelFetch(ps2_point_tex, ivec2(i * 2, 0), 0);
 			vec4 c  = texelFetch(ps2_point_tex, ivec2(i * 2 + 1, 0), 0);
-			v_light += c.rgb * ps2_falloff(distance(at, pr.xyz), pr.w);
+			points = max(points, c.rgb * ps2_falloff(distance(at, pr.xyz), pr.w));
 		}
+		v_light += points;
 		v_light = clamp(v_light, 0.0, 1.0);
 	} else {
 		v_light = vec3(0.5);   // 0x80: texture × colour, unchanged

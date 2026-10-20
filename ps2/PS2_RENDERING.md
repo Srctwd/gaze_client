@@ -154,18 +154,21 @@ centre:
 dir  = normalize(light_pos - object_centre)
 att  = clamp(1 - dist / radius, 0, 1)           // linear, the cheapest
      or 1 / (k0 + k1*dist + k2*dist²)            // classic, needs a window to reach 0
-                                                 // gaze_client: (1-(d/r)⁴)² * max(1 / (1 + d²),
-                                                 //   tail / (1 + (d/reach)²))  — a second classic
-                                                 //   curve as a dim far glow (ps2.gd point_tail/reach)
+                                                 // gaze_client: x = d/r, 1 - smoothstep(flat, 1, x),
+                                                 //   r = omni_range × point_range (ps2.gd); N·L
+                                                 //   wrapped by point_wrap (half-Lambert at 1)
 colour_for_this_object = light_colour * att
 // gaze_client: light_colour is blended toward white (point_white) and scaled
 // (point_gain) on the EE side before upload, like any game picking its colours.
 ```
 
 That's why torchlight on a PS2 character is uniform across the whole body.
-gaze_client uploads the 32 point lights nearest the camera as a texel table
-(`ps2_point_tex`, `ps2_point_count`) rather than per-object sets, and scenery
+gaze_client uploads the 64 point lights nearest the camera whose range
+reaches into the view, as a texel table (`ps2_point_tex`, `ps2_point_count`)
+rather than per-object sets, and scenery
 evaluates them per vertex, so a village of torch posts all glow at once.
+Overlapping point lights take the brightest one, not the sum, so a cluster
+of torches is no brighter than a single one.
 
 ### 4.3 Static scenery
 Scenery is usually **prelit**. Lighting is baked into vertex colours offline
@@ -309,7 +312,7 @@ Press **F9** in game to toggle. Turning it off restores every original material 
 
 | File | PS2 part | Sections |
 |---|---|---|
-| `ps2_common.gdshaderinc` | VU1 constants (global uniforms), 3 dir + ambient + up to 32 point lights (a texel table), 8-bit fog, ×2 MODULATE | §4, §5, §6.4 |
+| `ps2_common.gdshaderinc` | VU1 constants (global uniforms), 3 dir + ambient + up to 64 point lights (a texel table), 8-bit fog, ×2 MODULATE | §4, §5, §6.4 |
 | `ps2_model.gdshaderinc` + `ps2_model*.gdshader` | Models: opaque / double-sided / blended variants, HIGHLIGHT add, sphere map | §5, §6.1–6.3 |
 | `ps2_world.gdshader` | Terrain: prelit-style zone lighting (caves get no sun), two-sided vertex light | §4.3 |
 | `ps2_water.gdshader` | Alpha-blended water | §6.1 |

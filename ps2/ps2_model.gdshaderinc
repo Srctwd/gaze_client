@@ -53,6 +53,7 @@ void fragment() {
 	vec3 lit   = ps2_to_linear(ps2_apply_fog(clamp(ps2_modulate(base, v_light)    + add, 0.0, 1.0), v_fog));
 	vec3 shade = ps2_to_linear(ps2_apply_fog(clamp(ps2_modulate(base, v_light_ns) + add, 0.0, 1.0), v_fog));
 
+	ps2_omni_base = ps2_to_linear(base) * v_fog;
 	// mix(shade, lit, sun shadow) via light(), see ps2_common.gdshaderinc.
 	EMISSION  = shade;
 	ALBEDO    = max(lit - shade, vec3(0.0));

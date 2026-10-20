@@ -53,6 +53,6 @@
     "texture": "res://assets/textures/black_marble_wall.png",
     "climbable": false,
     "illusory": false,
-    "jitter": 0.0
+    "jitter": 0.35
   }
 ]
