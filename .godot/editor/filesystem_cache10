@@ -1,5 +1,5 @@
-63f7b34db8d8cdea90c76aacccf841ec
-::res://::1792533685
+78098b89c88a74ebe8c20117b8754620
+::res://::1792600772
 CMakeLists.txt::TextFile::-1::1787073455::0::1::::<><><>0<>0<><>::
 config.gd::GDScript::808203068800440378::1784393833::0::1::::<>Node<><>0<>0<><>::
 export_presets.cfg::TextFile::-1::1785774939::0::1::::<><><>0<>0<><>::
@@ -86,7 +86,7 @@ flame_particles_3d.tscn::PackedScene::8850282056190274831::1785123806::0::1::::<
 portal.glb::PackedScene::2556456329408911475::1788798215::1788798224::1::::<><><>0<>0<>f9728fe059675c66abd61a20ada909fc<>res://.godot/imported/portal.glb-d7e2ab562dbc8145abb68847d19c4aeb.scn::
 portal.tscn::PackedScene::1987208429348282238::1788798118::0::1::::<><><>0<>0<><>::uid://bcompyl8gmxo2::::res://assets/effects/portal.glb
 xp_sparkle.tscn::PackedScene::2475061589408663951::1791866376::0::1::::<><><>0<>0<><>::
-::res://assets/items/::1792597362
+::res://assets/items/::1792600754
 Arrow.tscn::PackedScene::4477166921662244064::1787200733::0::1::::<><><>0<>0<><>::uid://6s6fwtmkfjbi::::res://assets/meshes/arrow.glb
 Bag.tscn::PackedScene::6409016253950776386::1789239575::0::1::::<><><>0<>0<><>::uid://cjhembvsw1058::::res://assets/meshes/bag.glb<>uid://cp25nf7o8ty0e::::res://assets/items/item_prefab.gd
 item_prefab.gd::GDScript::5883257259151521822::1792535007::0::1::::ItemPrefab<>Node3D<><>0<>0<><>::
@@ -97,7 +97,7 @@ SmallStone.tscn::PackedScene::4205463629854769506::1789242903::0::1::::<><><>0<>
 Stick.tscn::PackedScene::3113033096582458413::1789239424::0::1::::<><><>0<>0<><>::uid://ck1xiw1phaa64::::res://assets/meshes/stick.glb<>uid://cp25nf7o8ty0e::::res://assets/items/item_prefab.gd
 ThrowingDagger.tscn::PackedScene::5762438120905345705::1789239450::0::1::::<><><>0<>0<><>::uid://cyj7cd86k3687::::res://assets/ThrowingKnife.glb<>uid://cp25nf7o8ty0e::::res://assets/items/item_prefab.gd<>res://assets/projectiles/Dagger.tscn
 Torch.tscn::PackedScene::1283569248607126058::1792597362::0::1::::<><><>0<>0<><>::uid://qf1w0atbtlhj::::res://assets/meshes/torch01.glb<>uid://cp25nf7o8ty0e::::res://assets/items/item_prefab.gd<>uid://b5bwnp2l3mgvl::::res://assets/particles/flame_particle_pixel01.png
-Tunic.tscn::PackedScene::6904624539426982420::1792535081::0::1::::<><><>0<>0<><>::uid://n0fdlxy4xms2::::res://assets/meshes/tunic01.glb<>uid://cp25nf7o8ty0e::::res://assets/items/item_prefab.gd
+Tunic.tscn::PackedScene::6904624539426982420::1792600754::0::1::::<><><>0<>0<><>::uid://n0fdlxy4xms2::::res://assets/meshes/tunic01.glb<>uid://cp25nf7o8ty0e::::res://assets/items/item_prefab.gd
 WoodenBow.tscn::PackedScene::4659319948242824742::1789242817::0::1::::<><><>0<>0<><>::uid://cvj2wbrj6jbwh::::res://assets/roughbow.glb<>uid://cp25nf7o8ty0e::::res://assets/items/item_prefab.gd<>uid://dswempjdhqoj7::::res://assets/projectiles/Arrow.tscn
 ::res://assets/meshes/::1792534861
 arrow.glb::PackedScene::2214905293521147222::1789221505::1789229611::1::::<><><>0<>0<>44624e29f6d352c249957f2a29e5c8e1<>res://.godot/imported/arrow.glb-a8f4b1d4693b108397ea17b2da6d8643.scn::
@@ -154,8 +154,8 @@ bush_Image_2.png::CompressedTexture2D::7276759456913958836::1788003849::17880038
 Torch01.tscn::PackedScene::4970769273049255569::1792597362::0::1::::<><><>0<>0<><>::uid://qf1w0atbtlhj::::res://assets/meshes/torch01.glb<>uid://b5bwnp2l3mgvl::::res://assets/particles/flame_particle_pixel01.png
 TorchPost.tscn::PackedScene::-1::1792597362::0::1::::<><><>0<>0<><>::uid://qf1w0atbtlhj::::res://assets/meshes/torch01.glb<>uid://b5bwnp2l3mgvl::::res://assets/particles/flame_particle_pixel01.png
 TorchSconce.tscn::PackedScene::-1::1792597362::0::1::::<><><>0<>0<><>::uid://qf1w0atbtlhj::::res://assets/meshes/torch01.glb<>uid://b5bwnp2l3mgvl::::res://assets/particles/flame_particle_pixel01.png
-::res://assets/shaders/::1792534958
-flame.tres::VisualShader::5257338018329070140::1792534958::0::1::::<><><>0<>0<><>::
+::res://assets/shaders/::1792600754
+flame.tres::VisualShader::5257338018329070140::1792600754::0::1::::<><><>0<>0<><>::
 ::res://assets/talent_icons/::1786162690
 ArcaneKnowledge.png::CompressedTexture2D::8134782950471369895::1785001132::1785001140::1::::<><><>0<>0<>36a6dd11b0fd51ceb24f4c9629195e07<>res://.godot/imported/ArcaneKnowledge.png-221b3e199716703d83df996f942a28bd.ctex::
 BasicTraining.png::CompressedTexture2D::313737055623065221::1784999590::1785009593::1::::<><><>0<>0<>109b95b2439d1896d487f2d40b43ef25<>res://.godot/imported/BasicTraining.png-ef75c54ebf3f342471ba5af6a85e5985.ctex::
@@ -185,8 +185,8 @@ targeting.gd::GDScript::3429144195338780392::1792261708::0::1::::<>Node<><>0<>0<
 ::res://net/::1789243411
 network.gd::GDScript::2931942868888989415::1792261612::0::1::::<>Node<><>0<>0<><>::
 protocol.gd::GDScript::4985431665451514907::1792261612::0::1::::<>Node<><>0<>0<><>::
-::res://ps2/::1792600432
-ps2.gd::GDScript::1371385298790917957::1792600432::0::1::::<>Node<><>0<>0<><>::
+::res://ps2/::1792600504
+ps2.gd::GDScript::1371385298790917957::1792600506::0::1::::<>Node<><>0<>0<><>::
 ps2_common.gdshaderinc::ShaderInclude::3617897910354775228::1792598290::0::1::::<><><>0<>0<><>::
 ps2_mesh.gd::GDScript::6827711534194376797::1792082950::0::1::::<>RefCounted<><>0<>0<><>::
 ps2_model.gdshader::Shader::1691299818002947421::1792080897::0::1::::<><><>0<>0<><>::
