@@ -11,6 +11,8 @@ extends Node
 const MODEL_SHADER        := preload("res://ps2/ps2_model.gdshader")
 const MODEL_DOUBLE_SHADER := preload("res://ps2/ps2_model_double.gdshader")
 const MODEL_BLEND_SHADER  := preload("res://ps2/ps2_model_blend.gdshader")
+const MODEL_PREPASS_SHADER        := preload("res://ps2/ps2_model_prepass.gdshader")
+const MODEL_PREPASS_DOUBLE_SHADER := preload("res://ps2/ps2_model_prepass_double.gdshader")
 const WORLD_SHADER        := preload("res://ps2/ps2_world.gdshader")
 const WATER_SHADER        := preload("res://ps2/ps2_water.gdshader")
 const POST_SHADER         := preload("res://ps2/ps2_post.gdshader")
@@ -37,9 +39,9 @@ var point_gain       := 0.4          # point-light brightness in PS2 mode (1 = r
 var point_white      := 0.15
 var point_range      := 1.0          # PS2 mode lights reach this × their omni_range, fading to 0 there (torches don't add up, so wider doesn't mean brighter)
 var point_flat       := 0.6          # fraction of the reach lit at full strength before fading out (0 = fades from the centre, → 1 = hard edge)
-var point_wrap       := 2.0          # point-light N·L wrap: 0 = Lambert (ground goes dark a few units from a torch, its light grazes it), 1 = half-Lambert, higher = more even
-var godot_points     := true         # test: light with Godot's own OmniLights (per pixel) instead of the PS2 point-light table
-var godot_point_gain := 1.0          # their brightness (1 = as Godot draws them without PS2 mode)
+var point_wrap       := 0.0          # point-light N·L wrap: 0 = Lambert (ground goes dark a few units from a torch, its light grazes it), 1 = half-Lambert, higher = more even
+var godot_lighting   := true         # light everything (sun, ambient, OmniLights, shadows) with Godot's own per-pixel lighting instead of the PS2 light set
+var godot_point_gain := 1.0          # OmniLight brightness in that mode (1 = as Godot draws them without PS2 mode)
 var sun_energy_ref   := 0.2          # sun_moon_controller.SUN_ENERGY_MAX
 var cave_ambient     := 1.67         # caves get the full scene ambient (× ambient_gain 0.6 ≈ 1.0); less leaves the torch as the only light, so caves go red
 var shadow_strength  := 0.5          # sun shadow map on top of PS2 light (0 = off)
@@ -170,6 +172,10 @@ func _update_globals() -> void:
 	if env != null:
 		ambient = _vec(env.ambient_light_color) * env.ambient_light_energy * ambient_gain
 	RenderingServer.global_shader_parameter_set("ps2_ambient", ambient)
+	var godot_ambient := Vector3.ZERO
+	if env != null:
+		godot_ambient = _vec(env.ambient_light_color.srgb_to_linear()) * env.ambient_light_energy
+	RenderingServer.global_shader_parameter_set("ps2_godot_ambient", godot_ambient)
 
 	var near := fog_near
 	var far  := fog_far
@@ -214,7 +220,7 @@ func _update_globals() -> void:
 		_point_img = Image.create_empty(MAX_POINTS * 2, 1, false, Image.FORMAT_RGBAF)
 		_point_tex = ImageTexture.create_from_image(_point_img)
 		RenderingServer.global_shader_parameter_set("ps2_point_tex", _point_tex)
-	var count := 0 if godot_points else mini(omnis.size(), MAX_POINTS)
+	var count := 0 if godot_lighting else mini(omnis.size(), MAX_POINTS)
 	for i in count:
 		var l := omnis[i]
 		var p := l.global_position
@@ -225,7 +231,7 @@ func _update_globals() -> void:
 	RenderingServer.global_shader_parameter_set("ps2_point_count", count)
 	RenderingServer.global_shader_parameter_set("ps2_point_flat", point_flat)
 	RenderingServer.global_shader_parameter_set("ps2_point_wrap", point_wrap)
-	RenderingServer.global_shader_parameter_set("ps2_godot_points", godot_points)
+	RenderingServer.global_shader_parameter_set("ps2_godot_lighting", godot_lighting)
 	RenderingServer.global_shader_parameter_set("ps2_godot_point_gain", godot_point_gain)
 
 
@@ -511,15 +517,21 @@ func _from_base(m: BaseMaterial3D) -> ShaderMaterial:
 	if m.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED \
 			or m.billboard_mode != BaseMaterial3D.BILLBOARD_DISABLED:
 		return null
-	var blend := m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA \
-			or m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	var blend := m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA
+	var prepass := m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	var double := m.cull_mode == BaseMaterial3D.CULL_DISABLED
 	var scissor := 0.0
 	if m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
 		scissor = m.alpha_scissor_threshold
 	elif m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_HASH:
 		scissor = 0.5
-	var shader: Shader = MODEL_BLEND_SHADER if blend \
-			else (MODEL_DOUBLE_SHADER if m.cull_mode == BaseMaterial3D.CULL_DISABLED else MODEL_SHADER)
+	var shader: Shader
+	if prepass:
+		shader = MODEL_PREPASS_DOUBLE_SHADER if double else MODEL_PREPASS_SHADER
+	elif blend:
+		shader = MODEL_BLEND_SHADER
+	else:
+		shader = MODEL_DOUBLE_SHADER if double else MODEL_SHADER
 	# Emission becomes the GS HIGHLIGHT add (used by targeting's glow).
 	var highlight := Vector3.ZERO
 	if m.emission_enabled:

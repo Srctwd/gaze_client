@@ -19,7 +19,8 @@ global uniform sampler2D ps2_point_tex;
 global uniform int   ps2_point_count;
 global uniform float ps2_point_flat;     // fraction of a point light's range lit at full strength (see ps2_falloff)
 global uniform float ps2_point_wrap;     // point-light N·L wrap: 0 = Lambert, 1 = half-Lambert (see ps2_point)
-global uniform bool  ps2_godot_points;   // test: Godot's own per-pixel OmniLights instead of the table (see light())
+global uniform bool  ps2_godot_lighting; // not PS2: Godot lights everything per pixel instead (see light())
+global uniform vec3  ps2_godot_ambient;  // linear scene ambient for that mode (ambient_light_disabled is compile-time)
 global uniform float ps2_godot_point_gain;
 global uniform vec3  ps2_fog_color;
 global uniform float ps2_fog_near;
@@ -121,19 +122,35 @@ vec3 ps2_apply_fog(vec3 c, float fog) {
 // mix(shade, lit, shadow): identical to the unshaded look in full sun.
 // Render modes needed: ambient_light_disabled, specular_disabled.
 //
-// With ps2_godot_points on (a test, not PS2), ps2.gd uploads no point lights
-// and Godot's OmniLights are added per pixel instead, as Godot's own Lambert
-// on the fragment's texture: SPECULAR_LIGHT is added untouched, while
-// DIFFUSE_LIGHT would be scaled by ALBEDO (= lit - shade).
+// With ps2_godot_lighting on (not PS2), ps2.gd uploads no point lights and
+// the fragment hands Godot the plain texture instead (ps2_godot_surface):
+// ALBEDO = texture, and light() adds every light (sun, moon, omnis) as
+// Godot's own per-pixel Lambert with full shadows. The scene ambient and the
+// fog go into EMISSION, since Godot's are turned off by the render modes.
 
-varying vec3 ps2_omni_base;   // linear texture colour, fogged; the fragment sets it
+// Fog as mix(fog colour, lit, fog) with lit unknown until Godot lights it:
+// scale the albedo by `fog` and add the fog colour's share.
+void ps2_godot_surface(vec3 base, vec3 add, float fog, out vec3 albedo, out vec3 emission) {
+	albedo   = ps2_to_linear(base) * fog;
+	emission = albedo * ps2_godot_ambient + ps2_to_linear(add) * fog
+			+ ps2_to_linear(ps2_fog_color) * (1.0 - fog);
+}
 
 void light() {
-	vec3 sun_view = normalize(mat3(VIEW_MATRIX) * ps2_light_dir0);
-	if (LIGHT_IS_DIRECTIONAL && dot(LIGHT, sun_view) > 0.999) {
-		DIFFUSE_LIGHT += vec3(mix(1.0, ATTENUATION, ps2_shadow_strength));
-	} else if (!LIGHT_IS_DIRECTIONAL && ps2_godot_points) {
-		SPECULAR_LIGHT += ps2_omni_base * LIGHT_COLOR * ATTENUATION
-				* max(dot(NORMAL, LIGHT), 0.0) * ps2_godot_point_gain / PI;
+	if (ps2_godot_lighting) {
+		float ndl  = dot(NORMAL, LIGHT);
+		float gain = 1.0;
+		if (!LIGHT_IS_DIRECTIONAL) {
+			// Same N·L wrap as ps2_point(), so a torch's grazing light
+			// doesn't leave the ground dark a few units out.
+			ndl  = (ndl + ps2_point_wrap) / (1.0 + ps2_point_wrap);
+			gain = ps2_godot_point_gain;
+		}
+		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * max(ndl, 0.0) * gain / PI;
+	} else {
+		vec3 sun_view = normalize(mat3(VIEW_MATRIX) * ps2_light_dir0);
+		if (LIGHT_IS_DIRECTIONAL && dot(LIGHT, sun_view) > 0.999) {
+			DIFFUSE_LIGHT += vec3(mix(1.0, ATTENUATION, ps2_shadow_strength));
+		}
 	}
 }

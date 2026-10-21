@@ -90,9 +90,13 @@ ps2_point_wrap={
 "type": "float",
 "value": 0.0
 }
-ps2_godot_points={
+ps2_godot_lighting={
 "type": "bool",
 "value": false
+}
+ps2_godot_ambient={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
 }
 ps2_godot_point_gain={
 "type": "float",

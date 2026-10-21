@@ -50,13 +50,16 @@ void fragment() {
 	if (env_strength > 0.0) {
 		add += ps2_to_gamma(texture(env_tex, v_env_uv).rgb) * env_strength;
 	}
-	vec3 lit   = ps2_to_linear(ps2_apply_fog(clamp(ps2_modulate(base, v_light)    + add, 0.0, 1.0), v_fog));
-	vec3 shade = ps2_to_linear(ps2_apply_fog(clamp(ps2_modulate(base, v_light_ns) + add, 0.0, 1.0), v_fog));
-
-	ps2_omni_base = ps2_to_linear(base) * v_fog;
-	// mix(shade, lit, sun shadow) via light(), see ps2_common.gdshaderinc.
-	EMISSION  = shade;
-	ALBEDO    = max(lit - shade, vec3(0.0));
+	if (ps2_godot_lighting) {
+		// Prelight in COLOR tints the texture, as vertex_color_use_as_albedo did.
+		ps2_godot_surface(base * (use_vertex_colors ? COLOR.rgb : vec3(1.0)), add, v_fog, ALBEDO, EMISSION);
+	} else {
+		vec3 lit   = ps2_to_linear(ps2_apply_fog(clamp(ps2_modulate(base, v_light)    + add, 0.0, 1.0), v_fog));
+		vec3 shade = ps2_to_linear(ps2_apply_fog(clamp(ps2_modulate(base, v_light_ns) + add, 0.0, 1.0), v_fog));
+		// mix(shade, lit, sun shadow) via light(), see ps2_common.gdshaderinc.
+		EMISSION  = shade;
+		ALBEDO    = max(lit - shade, vec3(0.0));
+	}
 	SPECULAR  = 0.0;
 	METALLIC  = 0.0;
 	ROUGHNESS = 1.0;
