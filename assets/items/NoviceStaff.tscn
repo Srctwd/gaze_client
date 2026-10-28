@@ -7,6 +7,7 @@
 [node name="NoviceStaff" type="Node3D" unique_id=135489644]
 transform = Transform3D(0.06, 0, 0, 0, 0.06, 0, 0, 0, 0.06, 0, 0, 0)
 script = ExtResource("1_4mgmo")
+hit_sound = "magic"
 projectile_scene = ExtResource("2_qp4kv")
 
 [node name="WoodenStaff01" parent="." unique_id=971176690 instance=ExtResource("3_5pgw3")]

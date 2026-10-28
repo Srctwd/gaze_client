@@ -7,6 +7,7 @@
 [node name="WoodenBow" unique_id=204951482 instance=ExtResource("1")]
 transform = Transform3D(2.9286634e-08, -2.5291795e-08, -0.335, 0.335, 2.5291797e-08, 2.928663e-08, 2.5291795e-08, -0.335, 2.5291797e-08, 0, 0, 0)
 script = ExtResource("2")
+hit_sound = "pierce"
 projectile_scene = ExtResource("4_vimbe")
 
 [node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=1544843177]

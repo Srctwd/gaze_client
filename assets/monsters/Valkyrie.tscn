@@ -1,6 +1,22 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://b0u8752wf3w5m"]
 
-[ext_resource type="PackedScene" path="res://assets/meshes/Valkyrie.glb" id="1_valk"]
+[ext_resource type="PackedScene" uid="uid://djyndexpe0ggo" path="res://assets/meshes/Valkyrie.glb" id="1_valk"]
 
-[node name="Valkyrie" instance=ExtResource("1_valk")]
+[node name="Valkyrie" unique_id=255972648 instance=ExtResource("1_valk")]
 transform = Transform3D(1.9, 0, 0, 0, 1.9, 0, 0, 0, 1.9, 0, 0, 0)
+metadata/swing_impact = 1.0
+
+[node name="Skeleton3D" parent="Armature" parent_id_path=PackedInt32Array(1594512467) index="0" unique_id=754526552]
+bones/0/rotation = Quaternion(0, 0.10524838, 0, 0.994446)
+bones/5/rotation = Quaternion(1.6602317e-07, 3.533426e-08, -0.51697046, 0.8560032)
+bones/6/rotation = Quaternion(2.1888548e-08, -6.805529e-08, -0.0050798506, 0.9999871)
+bones/7/rotation = Quaternion(1.455988e-08, 1.2907953e-08, -0.09789475, 0.99519676)
+bones/9/rotation = Quaternion(0.4991533, 0.49033764, 0.50698066, 0.50337434)
+bones/10/rotation = Quaternion(-0.020809287, -0.15462025, 0.0010113806, 0.98775434)
+bones/11/rotation = Quaternion(0.12252326, -0.22835557, -0.23586541, 0.9365945)
+bones/12/rotation = Quaternion(0.5063676, 0.49355024, 0.5063676, -0.4935503)
+bones/13/rotation = Quaternion(-0.691526, 1.5005735e-08, 1.7250867e-08, 0.72235155)
+bones/15/rotation = Quaternion(0.06752806, 9.039407e-09, 2.3995943e-08, 0.9977174)
+bones/16/rotation = Quaternion(0.5063676, -0.49355024, -0.5063676, -0.4935503)
+bones/17/rotation = Quaternion(-0.691526, -1.5005735e-08, -1.7250867e-08, 0.72235155)
+bones/19/rotation = Quaternion(0.06752806, -9.039407e-09, -2.3995943e-08, 0.9977174)

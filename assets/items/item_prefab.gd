@@ -6,6 +6,11 @@ class_name ItemPrefab
 ## projectile visual (e.g. multiple arrow types).
 @export var projectile_scene: PackedScene
 
+## Played when a hit with this item lands (sounds/hit_<name>.wav) — melee,
+## or a ranged shot whose projectile leaves its own hit_sound on "default".
+## Same list as Projectile.hit_sound.
+@export_enum("default", "blunt", "slash", "pierce", "rock", "fire", "magic") var hit_sound: String = "default"
+
 ## Returns the HandGrip (or, for headgear, HeadGrip; for body armor, ChestGrip) marker's transform relative to wherever this node
 ## itself ends up parented (composing this node's own baked transform with
 ## the marker's local one) — the caller aligns to this without ever touching

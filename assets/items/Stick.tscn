@@ -6,6 +6,7 @@
 [node name="Stick" unique_id=1539408691 instance=ExtResource("1")]
 transform = Transform3D(-2.3026859e-08, -0.305, 2.6663947e-08, -0.305, 2.302686e-08, 2.6663947e-08, -2.666395e-08, -2.6663946e-08, -0.305, 0, 0, 0)
 script = ExtResource("2")
+hit_sound = "blunt"
 
 [node name="Icosphere" parent="." index="0" unique_id=1477312536]
 script = ExtResource("2")

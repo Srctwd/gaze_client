@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://u4b2q6jvany"]
+
+[ext_resource type="PackedScene" uid="uid://ddp62yykhqlb5" path="res://assets/meshes/small_club.glb" id="1_3qba8"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2_tqbbo"]
+
+[node name="small_club" unique_id=1685101513 instance=ExtResource("1_3qba8")]
+transform = Transform3D(0.05, 0, 0, 0, -2.1855695e-09, 0.05, 0, -0.05, -2.1855695e-09, 0, 0, 0)
+script = ExtResource("2_tqbbo")
+hit_sound = "blunt"
+
+[node name="Cylinder" parent="." index="0" unique_id=19082767]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.14878035, -6.503395e-09)
+
+[node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=1546005461]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.719765, 4.7248946e-08)

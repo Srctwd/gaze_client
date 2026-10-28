@@ -36,13 +36,21 @@ uniform sampler2D cave_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float tile_scale = 4.0;
 varying vec3 world_pos;
+varying vec3 world_normal;
 void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	world_pos    = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 void fragment() {
 	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
-	vec3 tex = texture(cave_tex, world_pos.xz / tile_scale).rgb;
-	ALBEDO = tex * tint.rgb;
+	// Triplanar, like the wall shader: a top-down projection alone smears into
+	// streaks on steep cave surfaces (tunnel arches, chamber walls).
+	vec3 blend = pow(abs(world_normal), vec3(4.0));
+	blend /= (blend.x + blend.y + blend.z);
+	vec3 tex_x = texture(cave_tex, world_pos.zy / tile_scale).rgb;
+	vec3 tex_y = texture(cave_tex, world_pos.xz / tile_scale).rgb;
+	vec3 tex_z = texture(cave_tex, world_pos.xy / tile_scale).rgb;
+	ALBEDO = (tex_x * blend.x + tex_y * blend.y + tex_z * blend.z) * tint.rgb;
 }
 """
 	var m := ShaderMaterial.new()

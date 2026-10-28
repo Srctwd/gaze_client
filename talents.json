@@ -1,7 +1,18 @@
 [
   {
-    "bonus": [],
-    "description": "Foundational arcane study required by most arcane talents.\nTeaches a basic arcane spell.",
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "magic_damage",
+        "value": 5
+      },
+      {
+        "op": "+",
+        "stat": "magic_resistance",
+        "value": 2
+      }
+    ],
+    "description": "Foundational arcane study required by most arcane talents.\n5% increased arcane damage, +2 arcane resistance.",
     "effects": [],
     "id": 0,
     "key": "ArcaneKnowledge",
@@ -14,8 +25,19 @@
     "tier": 0
   },
   {
-    "bonus": [],
-    "description": "Foundational fire study required by most fire talents.\nTeaches a basic fire spell.",
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "fire_damage",
+        "value": 5
+      },
+      {
+        "op": "+",
+        "stat": "fire_resistance",
+        "value": 2
+      }
+    ],
+    "description": "Foundational fire study required by most fire talents.\n5% increased fire damage, +2 fire resistance.",
     "effects": [],
     "id": 1,
     "key": "FireKnowledge",
@@ -28,22 +50,39 @@
     "tier": 0
   },
   {
-    "bonus": [],
-    "description": "Foundational frost study required by most frost talents.\nTeaches a basic frost spell.",
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "water_damage",
+        "value": 5
+      },
+      {
+        "op": "+",
+        "stat": "water_resistance",
+        "value": 2
+      }
+    ],
+    "description": "Foundational water study required by most water talents.\n5% increased water damage, +2 water resistance.",
     "effects": [],
     "id": 2,
-    "key": "FrostKnowledge",
-    "name": "Frost Knowledge",
+    "key": "WaterKnowledge",
+    "name": "Water Knowledge",
     "requires": null,
     "tags": [
       "magic",
-      "frost"
+      "water"
     ],
     "tier": 0
   },
   {
-    "bonus": [],
-    "description": "Further enchances flame knowledge.",
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "fire_damage",
+        "value": 3
+      }
+    ],
+    "description": "3% increased fire damage.",
     "effects": [],
     "id": 3,
     "key": "Flames",
@@ -86,7 +125,7 @@
         {
           "or": [
             "FireKnowledge",
-            "FrostKnowledge"
+            "WaterKnowledge"
           ]
         },
         "ArcaneKnowledge"
@@ -102,13 +141,13 @@
     "bonus": [
       {
         "op": "+",
-        "stat": "weapon_damage",
+        "stat": "physical_damage",
         "value": 2.0
       },
       {
-        "op": "*",
-        "stat": "weapon_damage",
-        "value": 1.07
+        "op": "increased",
+        "stat": "physical_damage",
+        "value": 7.0
       }
     ],
     "description": "Generaly improves combat.",
@@ -170,10 +209,10 @@
     "id": 9,
     "key": "FrostBolt",
     "name": "Frost Bolt",
-    "requires": "FrostKnowledge",
+    "requires": "WaterKnowledge",
     "tags": [
       "magic",
-      "frost"
+      "water"
     ],
     "tier": 1
   },
@@ -186,10 +225,10 @@
     "id": 10,
     "key": "Frostbite",
     "name": "Frostbite",
-    "requires": "FrostKnowledge",
+    "requires": "WaterKnowledge",
     "tags": [
       "magic",
-      "frost"
+      "water"
     ],
     "tier": 1
   },
@@ -202,13 +241,13 @@
     "name": "Frost Nova",
     "requires": {
       "and": [
-        "FrostKnowledge",
+        "WaterKnowledge",
         "ArcaneKnowledge"
       ]
     },
     "tags": [
       "magic",
-      "frost",
+      "water",
       "arcane"
     ],
     "tier": 2
@@ -217,13 +256,13 @@
     "bonus": [
       {
         "op": "+",
-        "stat": "weapon_damage",
+        "stat": "physical_damage",
         "value": 5.0
       },
       {
-        "op": "*",
-        "stat": "weapon_damage",
-        "value": 1.05
+        "op": "increased",
+        "stat": "physical_damage",
+        "value": 5.0
       }
     ],
     "description": "Further improves weapon proficiency.",
@@ -241,11 +280,11 @@
     "bonus": [
       {
         "op": "+",
-        "stat": "bow_damage",
+        "stat": "distance_damage",
         "value": 3.0
       }
     ],
-    "description": "Your bow shots strike with additional force.",
+    "description": "Your distance attacks strike with additional force.",
     "effects": [],
     "id": 13,
     "key": "PowerShots",
@@ -260,9 +299,9 @@
   {
     "bonus": [
       {
-        "op": "*",
-        "stat": "weapon_damage",
-        "value": 1.1
+        "op": "increased",
+        "stat": "physical_damage",
+        "value": 10.0
       }
     ],
     "description": "Mastery of both blade and arcane arts.",
@@ -282,8 +321,24 @@
     "tier": 3
   },
   {
-    "bonus": [],
-    "description": "Channels mastery over fire, frost, and arcane into raw power.",
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "fire_damage",
+        "value": 5
+      },
+      {
+        "op": "increased",
+        "stat": "water_damage",
+        "value": 5
+      },
+      {
+        "op": "increased",
+        "stat": "lightning_damage",
+        "value": 5
+      }
+    ],
+    "description": "Channels mastery over fire, water, and lightning.\n5% increased fire, water and lightning damage.",
     "effects": [
       "Elemental"
     ],
@@ -295,12 +350,12 @@
         {
           "and": [
             "FireKnowledge",
-            "FrostKnowledge"
+            "WaterKnowledge"
           ]
         },
         {
           "and": [
-            "FrostKnowledge",
+            "WaterKnowledge",
             "LightningKnowledge"
           ]
         },
@@ -319,8 +374,19 @@
     "tier": 3
   },
   {
-    "bonus": [],
-    "description": "Foundational study of the void required by most void talents.",
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "void_damage",
+        "value": 5
+      },
+      {
+        "op": "+",
+        "stat": "void_resistance",
+        "value": 2
+      }
+    ],
+    "description": "Foundational void study required by most void talents.\n5% increased void damage, +2 void resistance.",
     "effects": [],
     "id": 16,
     "key": "VoidKnowledge",
@@ -446,8 +512,14 @@
     "tier": 5
   },
   {
-    "bonus": [],
-    "description": "Foundational training in stealth and cunning. Required by most thief talents.",
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "evasion",
+        "value": 3
+      }
+    ],
+    "description": "Foundational thievery required by most thief talents.\n+3 evasion.",
     "effects": [],
     "id": 24,
     "key": "LightFingers",
@@ -477,7 +549,7 @@
     "bonus": [
       {
         "op": "+",
-        "stat": "weapon_damage",
+        "stat": "physical_damage",
         "value": 4.0
       }
     ],
@@ -533,7 +605,7 @@
     "bonus": [
       {
         "op": "+",
-        "stat": "weapon_damage",
+        "stat": "physical_damage",
         "value": 3.0
       }
     ],
@@ -555,7 +627,7 @@
     "bonus": [
       {
         "op": "+",
-        "stat": "weapon_damage",
+        "stat": "physical_damage",
         "value": 3.0
       }
     ],
@@ -576,7 +648,7 @@
     "bonus": [
       {
         "op": "+",
-        "stat": "weapon_damage",
+        "stat": "physical_damage",
         "value": 5.0
       }
     ],
@@ -609,9 +681,9 @@
   {
     "bonus": [
       {
-        "op": "*",
-        "stat": "weapon_damage",
-        "value": 1.2
+        "op": "increased",
+        "stat": "physical_damage",
+        "value": 20.0
       }
     ],
     "description": "Enter a battle rage: you can no longer cast spells, use items, or be affected by mind-altering effects, and you take increased damage — but your attack speed and damage rise sharply.",
@@ -645,8 +717,19 @@
     "tier": 6
   },
   {
-    "bonus": [],
-    "description": "Trains you to use a shield effectively, increasing your armor and granting a chance to block incoming attacks.",
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "armor",
+        "value": 2
+      },
+      {
+        "op": "+",
+        "stat": "block",
+        "value": 0.05
+      }
+    ],
+    "description": "Trains you to use a shield effectively.\n+2 armor, +5% block.",
     "effects": [
       "Block"
     ],
@@ -662,8 +745,19 @@
     "tier": 1
   },
   {
-    "bonus": [],
-    "description": "Foundational lightning study. Required by most frost talents.",
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "lightning_damage",
+        "value": 5
+      },
+      {
+        "op": "+",
+        "stat": "lightning_resistance",
+        "value": 2
+      }
+    ],
+    "description": "Foundational lightning study required by most lightning talents.\n5% increased lightning damage, +2 lightning resistance.",
     "effects": [],
     "id": 35,
     "key": "LightningKnowledge",
@@ -672,6 +766,850 @@
     "tags": [
       "lightning",
       "magic"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [],
+    "description": "When your quiver is empty, your bow shots conjure an arrow of pure arcane energy, spending 2.5% of your maximum mana per shot.",
+    "effects": [
+      "ArcaneArrow"
+    ],
+    "id": 36,
+    "key": "ArcaneArrow",
+    "name": "Arcane Arrow",
+    "requires": null,
+    "tags": [
+      "weapon",
+      "bow",
+      "arcane"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "water_damage",
+        "value": 3
+      }
+    ],
+    "description": "3% increased water damage.",
+    "effects": [],
+    "id": 37,
+    "key": "Waters",
+    "name": "Waters",
+    "requires": "WaterKnowledge",
+    "tags": [
+      "magic",
+      "water"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "void_damage",
+        "value": 3
+      }
+    ],
+    "description": "3% increased void damage.",
+    "effects": [],
+    "id": 38,
+    "key": "Voids",
+    "name": "Voids",
+    "requires": "VoidKnowledge",
+    "tags": [
+      "magic",
+      "void"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "attack_speed",
+        "value": 2
+      }
+    ],
+    "description": "2% increased attack speed.",
+    "effects": [],
+    "id": 39,
+    "key": "FasterAttacks",
+    "name": "Faster Attacks",
+    "requires": "BasicTraining",
+    "tags": [
+      "weapon"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "wind_damage",
+        "value": 5
+      },
+      {
+        "op": "+",
+        "stat": "wind_resistance",
+        "value": 2
+      }
+    ],
+    "description": "Foundational wind study required by most wind talents.\n5% increased wind damage, +2 wind resistance.",
+    "effects": [],
+    "id": 40,
+    "key": "WindKnowledge",
+    "name": "Wind Knowledge",
+    "requires": null,
+    "tags": [
+      "magic",
+      "wind"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "poison_damage",
+        "value": 5
+      },
+      {
+        "op": "+",
+        "stat": "poison_resistance",
+        "value": 2
+      }
+    ],
+    "description": "Foundational poison study required by most poison talents.\n5% increased poison damage, +2 poison resistance.",
+    "effects": [],
+    "id": 41,
+    "key": "PoisonKnowledge",
+    "name": "Poison Knowledge",
+    "requires": null,
+    "tags": [
+      "poison"
+    ],
+    "tier": 0
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "fire_resistance",
+        "value": 4
+      }
+    ],
+    "description": "+4 fire resistance.",
+    "effects": [],
+    "id": 42,
+    "key": "FireWard",
+    "name": "Fire Ward",
+    "requires": "FireKnowledge",
+    "tags": [
+      "fire",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "fire_damage",
+        "value": 2
+      }
+    ],
+    "description": "Your weapon hits deal +2 fire damage.",
+    "effects": [],
+    "id": 43,
+    "key": "BurningBlade",
+    "name": "Burning Blade",
+    "requires": {
+      "and": [
+        "FireKnowledge",
+        "BasicTraining"
+      ]
+    },
+    "tags": [
+      "fire",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "fire_damage",
+        "value": 10
+      }
+    ],
+    "description": "Requires 3 fire talents.\n10% increased fire damage.",
+    "effects": [],
+    "id": 44,
+    "key": "FireMastery",
+    "name": "Fire Mastery",
+    "requires": {
+      "sum": {
+        "group": "fire",
+        "threshold": 3
+      }
+    },
+    "tags": [
+      "magic",
+      "fire"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "water_resistance",
+        "value": 4
+      }
+    ],
+    "description": "+4 water resistance.",
+    "effects": [],
+    "id": 45,
+    "key": "WaterWard",
+    "name": "Water Ward",
+    "requires": "WaterKnowledge",
+    "tags": [
+      "water",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "water_damage",
+        "value": 2
+      }
+    ],
+    "description": "Your weapon hits deal +2 water damage.",
+    "effects": [],
+    "id": 46,
+    "key": "TidalEdge",
+    "name": "Tidal Edge",
+    "requires": {
+      "and": [
+        "WaterKnowledge",
+        "BasicTraining"
+      ]
+    },
+    "tags": [
+      "water",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "water_damage",
+        "value": 10
+      }
+    ],
+    "description": "Requires 3 water talents.\n10% increased water damage.",
+    "effects": [],
+    "id": 47,
+    "key": "WaterMastery",
+    "name": "Water Mastery",
+    "requires": {
+      "sum": {
+        "group": "water",
+        "threshold": 3
+      }
+    },
+    "tags": [
+      "magic",
+      "water"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "wind_damage",
+        "value": 3
+      }
+    ],
+    "description": "3% increased wind damage.",
+    "effects": [],
+    "id": 48,
+    "key": "Gusts",
+    "name": "Gusts",
+    "requires": "WindKnowledge",
+    "tags": [
+      "magic",
+      "wind"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "wind_resistance",
+        "value": 4
+      }
+    ],
+    "description": "+4 wind resistance.",
+    "effects": [],
+    "id": 49,
+    "key": "WindWard",
+    "name": "Wind Ward",
+    "requires": "WindKnowledge",
+    "tags": [
+      "wind",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "wind_damage",
+        "value": 2
+      }
+    ],
+    "description": "Your weapon hits deal +2 wind damage.",
+    "effects": [],
+    "id": 50,
+    "key": "GaleStrikes",
+    "name": "Gale Strikes",
+    "requires": {
+      "and": [
+        "WindKnowledge",
+        "BasicTraining"
+      ]
+    },
+    "tags": [
+      "wind",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "wind_damage",
+        "value": 10
+      }
+    ],
+    "description": "Requires 3 wind talents.\n10% increased wind damage.",
+    "effects": [],
+    "id": 51,
+    "key": "WindMastery",
+    "name": "Wind Mastery",
+    "requires": {
+      "sum": {
+        "group": "wind",
+        "threshold": 3
+      }
+    },
+    "tags": [
+      "magic",
+      "wind"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "lightning_damage",
+        "value": 3
+      }
+    ],
+    "description": "3% increased lightning damage.",
+    "effects": [],
+    "id": 52,
+    "key": "Sparks",
+    "name": "Sparks",
+    "requires": "LightningKnowledge",
+    "tags": [
+      "magic",
+      "lightning"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "lightning_resistance",
+        "value": 4
+      }
+    ],
+    "description": "+4 lightning resistance.",
+    "effects": [],
+    "id": 53,
+    "key": "LightningWard",
+    "name": "Lightning Ward",
+    "requires": "LightningKnowledge",
+    "tags": [
+      "lightning",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "lightning_damage",
+        "value": 2
+      }
+    ],
+    "description": "Your weapon hits deal +2 lightning damage.",
+    "effects": [],
+    "id": 54,
+    "key": "ChargedStrikes",
+    "name": "Charged Strikes",
+    "requires": {
+      "and": [
+        "LightningKnowledge",
+        "BasicTraining"
+      ]
+    },
+    "tags": [
+      "lightning",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "lightning_damage",
+        "value": 10
+      }
+    ],
+    "description": "Requires 3 lightning talents.\n10% increased lightning damage.",
+    "effects": [],
+    "id": 55,
+    "key": "LightningMastery",
+    "name": "Lightning Mastery",
+    "requires": {
+      "sum": {
+        "group": "lightning",
+        "threshold": 3
+      }
+    },
+    "tags": [
+      "magic",
+      "lightning"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "poison_damage",
+        "value": 3
+      }
+    ],
+    "description": "3% increased poison damage.",
+    "effects": [],
+    "id": 56,
+    "key": "Venoms",
+    "name": "Venoms",
+    "requires": "PoisonKnowledge",
+    "tags": [
+      "poison"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "poison_resistance",
+        "value": 4
+      }
+    ],
+    "description": "+4 poison resistance.",
+    "effects": [],
+    "id": 57,
+    "key": "PoisonWard",
+    "name": "Poison Ward",
+    "requires": "PoisonKnowledge",
+    "tags": [
+      "poison",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "poison_damage",
+        "value": 2
+      }
+    ],
+    "description": "Your weapon hits deal +2 poison damage.",
+    "effects": [],
+    "id": 58,
+    "key": "ToxicEdge",
+    "name": "Toxic Edge",
+    "requires": {
+      "and": [
+        "PoisonKnowledge",
+        "BasicTraining"
+      ]
+    },
+    "tags": [
+      "poison",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "poison_damage",
+        "value": 10
+      }
+    ],
+    "description": "Requires 3 poison talents.\n10% increased poison damage.",
+    "effects": [],
+    "id": 59,
+    "key": "PoisonMastery",
+    "name": "Poison Mastery",
+    "requires": {
+      "sum": {
+        "group": "poison",
+        "threshold": 3
+      }
+    },
+    "tags": [
+      "poison"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "void_resistance",
+        "value": 4
+      }
+    ],
+    "description": "+4 void resistance.",
+    "effects": [],
+    "id": 60,
+    "key": "VoidWard",
+    "name": "Void Ward",
+    "requires": "VoidKnowledge",
+    "tags": [
+      "void",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "void_damage",
+        "value": 2
+      }
+    ],
+    "description": "Your weapon hits deal +2 void damage.",
+    "effects": [],
+    "id": 61,
+    "key": "VoidEdge",
+    "name": "Void Edge",
+    "requires": {
+      "and": [
+        "VoidKnowledge",
+        "BasicTraining"
+      ]
+    },
+    "tags": [
+      "void",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "void_damage",
+        "value": 10
+      }
+    ],
+    "description": "Requires 3 void talents.\n10% increased void damage.",
+    "effects": [],
+    "id": 62,
+    "key": "VoidMastery",
+    "name": "Void Mastery",
+    "requires": {
+      "sum": {
+        "group": "void",
+        "threshold": 3
+      }
+    },
+    "tags": [
+      "magic",
+      "void"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "magic_damage",
+        "value": 3
+      }
+    ],
+    "description": "3% increased arcane damage.",
+    "effects": [],
+    "id": 63,
+    "key": "Arcana",
+    "name": "Arcana",
+    "requires": "ArcaneKnowledge",
+    "tags": [
+      "magic",
+      "arcane"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "magic_resistance",
+        "value": 4
+      }
+    ],
+    "description": "+4 arcane resistance.",
+    "effects": [],
+    "id": 64,
+    "key": "ArcaneWard",
+    "name": "Arcane Ward",
+    "requires": "ArcaneKnowledge",
+    "tags": [
+      "arcane",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "magic_damage",
+        "value": 2
+      }
+    ],
+    "description": "Your weapon hits deal +2 arcane damage.",
+    "effects": [],
+    "id": 65,
+    "key": "ArcaneEdge",
+    "name": "Arcane Edge",
+    "requires": {
+      "and": [
+        "ArcaneKnowledge",
+        "BasicTraining"
+      ]
+    },
+    "tags": [
+      "arcane",
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "magic_damage",
+        "value": 10
+      }
+    ],
+    "description": "Requires 3 arcane talents.\n10% increased arcane damage.",
+    "effects": [],
+    "id": 66,
+    "key": "ArcaneMastery",
+    "name": "Arcane Mastery",
+    "requires": {
+      "sum": {
+        "group": "arcane",
+        "threshold": 3
+      }
+    },
+    "tags": [
+      "magic",
+      "arcane"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "armor",
+        "value": 3
+      }
+    ],
+    "description": "+3 armor.",
+    "effects": [],
+    "id": 67,
+    "key": "Toughness",
+    "name": "Toughness",
+    "requires": "BasicTraining",
+    "tags": [
+      "weapon",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "armor",
+        "value": 10
+      },
+      {
+        "op": "+",
+        "stat": "def",
+        "value": 1
+      }
+    ],
+    "description": "10% increased armor, +1 def.",
+    "effects": [],
+    "id": 68,
+    "key": "IronSkin",
+    "name": "Iron Skin",
+    "requires": "Toughness",
+    "tags": [
+      "defense"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "evasion",
+        "value": 3
+      },
+      {
+        "op": "+",
+        "stat": "evade_chance",
+        "value": 0.03
+      }
+    ],
+    "description": "+3 evasion, +3% evade chance.",
+    "effects": [],
+    "id": 69,
+    "key": "Footwork",
+    "name": "Footwork",
+    "requires": "BasicTraining",
+    "tags": [
+      "weapon",
+      "defense"
+    ],
+    "tier": 1
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "attack_speed",
+        "value": 4
+      }
+    ],
+    "description": "4% increased attack speed.",
+    "effects": [],
+    "id": 70,
+    "key": "Swiftness",
+    "name": "Swiftness",
+    "requires": "FasterAttacks",
+    "tags": [
+      "weapon"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "increased",
+        "stat": "distance_damage",
+        "value": 8
+      }
+    ],
+    "description": "8% increased distance damage.",
+    "effects": [],
+    "id": 71,
+    "key": "Sharpshooter",
+    "name": "Sharpshooter",
+    "requires": "DistanceTraining",
+    "tags": [
+      "weapon",
+      "distance"
+    ],
+    "tier": 2
+  },
+  {
+    "bonus": [
+      {
+        "op": "+",
+        "stat": "distance_range",
+        "value": 3
+      }
+    ],
+    "description": "+3 distance attack range.",
+    "effects": [],
+    "id": 72,
+    "key": "LongShot",
+    "name": "Long Shot",
+    "requires": {
+      "and": [
+        "PowerShots",
+        "Sharpshooter"
+      ]
+    },
+    "tags": [
+      "weapon",
+      "distance"
+    ],
+    "tier": 3
+  },
+  {
+    "bonus": [],
+    "description": "Climb any wall or cliff too steep to walk, not just ladders and vines: push into it to climb up, pull away to climb down.",
+    "effects": [
+      "Climb"
+    ],
+    "id": 73,
+    "key": "Climb",
+    "name": "Climb",
+    "params": {
+      "climb_ratio": 0.7
+    },
+    "requires": "LightFingers",
+    "tags": [
+      "thief"
     ],
     "tier": 1
   }

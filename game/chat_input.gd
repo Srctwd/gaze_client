@@ -6,7 +6,7 @@ extends Node
 # centered on screen (same technique as entity_manager.gd's NPC speech
 # bubbles), turning yellow to mark it as sent, and the text is relayed to
 # the server as ChatSay (see chat.cpp — nearby NPCs may reply via
-# NpcSpeech). Text wrapped in a pair of '*' (npc.json's keyword convention,
+# NpcSpeech). Text wrapped in a pair of '*' (npcs.json's keyword convention,
 # e.g. "*Trade*") renders highlighted, same as NPC replies.
 
 @onready var _player_controller: Node = $"../PlayerController"

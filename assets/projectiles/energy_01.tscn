@@ -2,6 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://bj07l25p0fx5q" path="res://assets/projectiles/Energy01.glb" id="1_j44vi"]
 [ext_resource type="Texture2D" uid="uid://yqymflm7v7fi" path="res://assets/tree03_Image_2.png" id="2_u1na0"]
+[ext_resource type="Script" uid="uid://ba2r0dll7abg" path="res://assets/projectiles/projectile.gd" id="proj_script"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_j44vi"]
 emission_enabled = true
@@ -27,6 +28,8 @@ scale_max = 0.5
 [sub_resource type="QuadMesh" id="QuadMesh_u1j2e"]
 
 [node name="Energy01" unique_id=1384147374 instance=ExtResource("1_j44vi")]
+script = ExtResource("proj_script")
+hit_sound = "magic"
 transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, 0)
 
 [node name="Icosphere" parent="." index="0" unique_id=75094170]

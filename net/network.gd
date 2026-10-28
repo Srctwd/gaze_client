@@ -2,12 +2,13 @@ extends Node
 
 signal connected
 signal disconnected
-signal unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, anim_state: int)
+signal unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, anim_state: int, radius: float, height: float)
 signal unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, pitch: float, anim_state: int)
 signal time_of_day(game_seconds: float)
 signal login_ok(net_id: int)
 signal login_fail
 signal action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
+signal action_windup(actor_id: int, action_type: int, windup: float)
 signal unit_hit(target_id: int, attacker_id: int, count: int, absorbed: int, armored: int, defended: int)
 signal unit_destroyed(net_id: int)
 signal vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana: float)
@@ -23,6 +24,7 @@ signal npc_speech(npc_net_id: int, target_player_net_id: int, text: String)
 signal dialog_options(npc_net_id: int, options: Array)
 signal item_inspected(container_def_id: int, contents: Array)
 signal chest_result(chest_net_id: int, result: int)
+signal character_deleted(result: int)
 
 const HOST     = "stonegaze.link"
 const PORT     = 7777
@@ -79,9 +81,10 @@ func _parse(data: PackedByteArray) -> void:
 	if data.is_empty():
 		return
 	match data[0]:
-		0x01: # SpawnUnit: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) anim_state(u8)
+		0x01: # SpawnUnit: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) anim_state(u8) radius(f32) height(f32)
 			unit_spawned.emit(data.decode_u32(1), data[5], data[6],
-				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)), data[19])
+				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)), data[19],
+				data.decode_float(20), data.decode_float(24))
 		0x02: # UnitPos: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) orient(u8) anim_state(u8)
 			var orient := Protocol.unpack_orient(data[19])
 			unit_pos.emit(data.decode_u32(1), data[5], data[6],
@@ -169,6 +172,10 @@ func _parse(data: PackedByteArray) -> void:
 			item_inspected.emit(_container_def_id, _inspect_contents)
 		0x23: # ChestResult: chest_net_id(u32) result(u8) — requesting peer only
 			chest_result.emit(data.decode_u32(1), data[5])
+		0x24: # ActionWindup: actor(u32) action_type(u8, ACTION_NOTHING = cancelled) windup(f32, seconds until it fires) — the hit itself still comes as ActionOk
+			action_windup.emit(data.decode_u32(1), data[5], data.decode_float(6))
+		0x26: # DeleteCharacterResponse: result(u8) — requesting peer only
+			character_deleted.emit(data[1])
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

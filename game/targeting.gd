@@ -13,76 +13,58 @@ func _on_player_id_changed(net_id: int) -> void:
 		_set_highlight(_current_target, false)
 		_current_target = -1
 
-func _input(event: InputEvent) -> void:
-	if event is InputEventKey \
-			and event.keycode == KEY_TAB \
-			and event.pressed and not event.echo \
-			and GameState.player_net_id != -1:
-		_select_target()
+# The target is whatever unit the player is looking at, re-picked every
+# frame with the same aim scoring as items (_score_candidate) — it's
+# highlighted and synced to the server (pkt_target) whenever it changes, so
+# what glows is exactly what an attack or cast will go for.
+func _process(_delta: float) -> void:
+	if GameState.player_net_id == -1:
+		return
+	var chosen := _pick_unit()
+	if chosen == _current_target:
+		return
+	_set_highlight(_current_target, false)
+	_set_highlight(chosen, true)
+	_current_target = chosen
+	# The server has no "clear target" — looking at nothing just drops the
+	# local highlight and leaves its last target in place.
+	if chosen != -1:
+		Network.send(Protocol.pkt_target(chosen))
 
-func _select_target() -> void:
+# Best-scoring unit in the aim cone, or -1. The current target is kept
+# unless another one scores clearly better (_TARGET_STICKINESS), so two
+# units at nearly the same spot on screen don't flicker back and forth.
+const _TARGET_STICKINESS := 0.85
+
+func _pick_unit() -> int:
 	var screen_center := get_viewport().get_visible_rect().size * 0.5
 	var player_pos    := Vector3.ZERO
 	if _entity_manager.entities.has(GameState.player_net_id):
 		player_pos = (_entity_manager.entities[GameState.player_net_id] as StaticBody3D).position
-
-	var best_id      := -1
-	var best_score   := INF
-	var second_id    := -1
-	var second_score := INF
-
+	var best_id       := -1
+	var best_score    := INF
+	var current_score := INF
 	for net_id in _entity_manager.entities:
 		if net_id == GameState.player_net_id or _entity_manager.chests.has(net_id):
 			continue
 		var body  := _entity_manager.entities[net_id] as StaticBody3D
 		var score := _score_candidate(body.position, player_pos, screen_center)
-		if score == INF:
-			continue
-		if score < best_score:
-			second_score = best_score
-			second_id    = best_id
-			best_score   = score
-			best_id      = net_id
-		elif score < second_score:
-			second_score = score
-			second_id    = net_id
-
-	if best_id == -1:
-		return
-
-	var chosen := best_id
-	if best_id == _current_target:
-		if second_id == -1 or second_score > best_score / 0.8:
-			return
-		chosen = second_id
-
-	_set_highlight(_current_target, false)
-	_set_highlight(chosen, true)
-	_current_target = chosen
-
-	Network.send(Protocol.pkt_target(chosen))
-
-# Same aim-scoring as pick_aimed_item, but over combat units (_entity_manager.entities)
-# instead of floor items — used for a single shot's target (e.g. the bow), not
-# the persistent tab-target lock (_select_target/pkt_target).
-func pick_aimed_unit() -> int:
-	if GameState.player_net_id == -1:
-		return -1
-	var screen_center := get_viewport().get_visible_rect().size * 0.5
-	var player_pos    := Vector3.ZERO
-	if _entity_manager.entities.has(GameState.player_net_id):
-		player_pos = (_entity_manager.entities[GameState.player_net_id] as StaticBody3D).position
-	var best_id    := -1
-	var best_score := INF
-	for net_id in _entity_manager.entities:
-		if net_id == GameState.player_net_id or _entity_manager.chests.has(net_id):
-			continue
-		var body := _entity_manager.entities[net_id] as StaticBody3D
-		var score := _score_candidate(body.position, player_pos, screen_center)
+		if net_id == _current_target:
+			current_score = score
 		if score < best_score:
 			best_score = score
 			best_id    = net_id
+	if current_score != INF and current_score * _TARGET_STICKINESS <= best_score:
+		return _current_target
 	return best_id
+
+# The unit an attack or cast should go for right now — refreshed first so a
+# click on the same frame as a look adjustment still hits what's under aim.
+func pick_aimed_unit() -> int:
+	if GameState.player_net_id == -1:
+		return -1
+	_process(0.0)
+	return _current_target
 
 func pick_aimed_item(items: Dictionary) -> int:
 	if GameState.player_net_id == -1 or items.is_empty():

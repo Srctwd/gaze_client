@@ -136,6 +136,9 @@ func is_in_water(pos: Vector3) -> bool:
 			return true
 	return false
 
+func footstep_surface(feet: Vector3) -> String:
+	return _wd.footstep_surface(feet) if _wd != null else "stone"
+
 # Returns the nearest static object of the given type within max_dist (horizontal distance),
 # as {"x": float, "z": float}, or null if none in range.
 func nearest_static_object(pos: Vector3, obj_type: int, max_dist: float) -> Variant:

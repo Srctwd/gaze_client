@@ -5,7 +5,9 @@ extends CanvasLayer
 # requirement-evaluation logic lives here — see talent_tree.gd for that.
 #
 # Fullscreen, opaque, starry backdrop. Tier 0 sits at the bottom of the
-# screen, higher tiers stack upward.
+# tree, higher tiers stack upward. The tree is laid out on a fixed-spacing
+# canvas that can be much bigger than the screen — drag to pan, scroll to
+# zoom — so a wide tier never squeezes its nodes on top of each other.
 
 # Emitted by selection mode (character creation, see start_selection()) — a
 # purely local pick, no network traffic involved since there's no character/
@@ -19,6 +21,18 @@ const _BG_COLOR   := Color(0.0, 0.0, 0.0, 1.0)
 const _STAR_COUNT := 220
 const _ARROW_LEN   := 22.0
 const _ARROW_WIDTH := 16.0
+
+# Canvas spacing at zoom 1: distance between neighboring columns' node
+# centers, and between tiers.
+const _COL_SPACING := 140.0
+const _ROW_SPACING := 190.0
+const _MIN_ZOOM := 0.3
+const _MAX_ZOOM := 1.5
+const _ZOOM_STEP := 1.1
+# Opening the tree zooms out to fit, but never below this — any smaller and
+# names stop being readable; pan the rest into view instead.
+const _FIT_MIN_ZOOM := 0.8
+const _HINT := "Drag to pan, scroll to zoom."
 
 # A talent's icon is res://assets/talent_icons/<key>.png (e.g. Flames ->
 # talent_icons/Flames.png), derived from the talent's own key — drop a
@@ -38,15 +52,19 @@ var _title_label: Label
 var _points_label: Label
 var _desc_label: Label
 var _tree_area: Control
+var _canvas: Control  # child of _tree_area holding every node; panned/zoomed via its position/scale
+var _grid_cols: int = 1  # widest tier's node count — the canvas is this many columns wide
+var _max_tier: int = 0
 var _buttons: Dictionary = {}   # node_id -> TextureButton (the clickable icon itself)
 var _labels: Dictionary = {}    # node_id -> Label (name, shown under the icon)
 var _containers: Dictionary = {}  # node_id -> VBoxContainer (icon + label, positioned as one unit)
 var _placeholder_icon: Texture2D
 var _row_frac: Dictionary = {}  # node_id -> float (0 = top, 1 = bottom)
 var _col_frac: Dictionary = {}  # node_id -> float (0..1)
-var _centers: Dictionary = {}   # node_id -> Vector2 (local to _tree_area, updated on resize)
+var _centers: Dictionary = {}   # node_id -> Vector2 (local to _canvas)
 var _edges: Array = []          # Array[Dictionary] of {child, parent, optional}
-var _row_frac_backup: Dictionary = {}  # node_id -> float, saved while selection mode overrides it
+var _pos_override: Dictionary = {}  # node_id -> Vector2 canvas top-left, set while selection mode compacts tier 0
+var _needs_fit: bool = false    # _fit_view() pending until _tree_area has a real size
 
 var _points_available: int = 0
 var _learned: Dictionary = {}  # node_id -> true
@@ -58,7 +76,7 @@ var _selection_mode: bool = false  # true while picking a starting talent during
 # _input() level (not a Control's gui_input) so dragging keeps working even
 # while the cursor crosses over a talent icon mid-drag — a child Button
 # would otherwise swallow the motion events before _tree_area ever saw them.
-var _pan_offset: Vector2 = Vector2.ZERO
+# The pan itself is just _canvas.position.
 var _dragging: bool = false
 var _drag_last_mouse: Vector2 = Vector2.ZERO
 
@@ -111,6 +129,7 @@ func _ready() -> void:
 	vbox.add_child(_tree_area)
 
 	_desc_label = Label.new()
+	_desc_label.text = _HINT
 	_desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_desc_label.custom_minimum_size = Vector2(0, 40)
@@ -141,10 +160,22 @@ func _input(event: InputEvent) -> void:
 			_drag_last_mouse = event.position
 		else:
 			_dragging = false
+	elif event is InputEventMouseButton and event.pressed \
+			and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] \
+			and _tree_area.get_global_rect().has_point(event.position):
+		var factor := _ZOOM_STEP if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / _ZOOM_STEP
+		_zoom_at(event.position - _tree_area.global_position, factor)
 	elif event is InputEventMouseMotion and _dragging:
-		_pan_offset += event.position - _drag_last_mouse
+		_canvas.position += event.position - _drag_last_mouse
 		_drag_last_mouse = event.position
-		_reposition()
+
+
+# Zooms keeping the canvas point under `at` (local to _tree_area) fixed.
+func _zoom_at(at: Vector2, factor: float) -> void:
+	var zoom := clampf(_canvas.scale.x * factor, _MIN_ZOOM, _MAX_ZOOM)
+	var canvas_pt := (at - _canvas.position) / _canvas.scale.x
+	_canvas.scale = Vector2.ONE * zoom
+	_canvas.position = at - canvas_pt * zoom
 
 
 func _generate_stars() -> void:
@@ -186,8 +217,12 @@ func _build_tree_area() -> void:
 	# Panning can push nodes outside this rect — clip them instead of letting
 	# them draw over the title/points label above or description/close button below.
 	_tree_area.clip_contents = true
-	_tree_area.draw.connect(_draw_edges)
-	_tree_area.resized.connect(_reposition)
+	_tree_area.resized.connect(func(): if _needs_fit: _fit_view())
+
+	_canvas = Control.new()
+	_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_canvas.draw.connect(_draw_edges)
+	_tree_area.add_child(_canvas)
 
 	var tiers: Dictionary = {}  # tier -> Array of talent dicts, in file order
 	var max_tier := 0
@@ -199,6 +234,10 @@ func _build_tree_area() -> void:
 
 	var tier_keys: Array = tiers.keys()
 	tier_keys.sort()
+	_max_tier = max_tier
+	_grid_cols = 1
+	for tier in tier_keys:
+		_grid_cols = maxi(_grid_cols, tiers[tier].size())
 
 	# Column layout: the root tier is spread evenly; every other node's column
 	# is the average of its own prerequisites' columns, so lines converge and
@@ -226,13 +265,20 @@ func _build_tree_area() -> void:
 		var sorted_row := row.duplicate()
 		sorted_row.sort_custom(func(a, b): return desired[a.id] < desired[b.id])
 
-		# Minimum column separation between same-tier siblings. Divisor floored
-		# at 8 so a small, tightly-clustered row (e.g. 3-4 nodes all averaging
-		# toward the same spot) doesn't inherit the wide gap meant for evenly-
-		# spread rows — seeding _resolve_columns with too large a min_gap is
-		# what used to drag a whole cluster past column 1.0.
-		var min_gap := 1.0 / maxf(row.size() + 1, 8.0)
+		# One canvas column (_COL_SPACING px) between same-tier siblings —
+		# the canvas is as many columns wide as the widest tier, so every
+		# row fits without overlapping.
+		var min_gap := 1.0 / _grid_cols
 		_resolve_columns(sorted_row, desired, min_gap)
+
+		# _resolve_columns keeps spacing but not bounds — slide the whole row
+		# back inside the canvas if a cluster drifted past either edge.
+		var lo := 0.5 / _grid_cols
+		var first: float = _col_frac[sorted_row[0].id]
+		var last: float = _col_frac[sorted_row[-1].id]
+		var shift := maxf(lo - first, 0.0) + minf(1.0 - lo - last, 0.0)
+		for t in sorted_row:
+			_col_frac[t.id] += shift
 
 		for t in row:
 			# tier 0 at the bottom (frac 1.0), highest tier at the top (frac 0.0)
@@ -252,7 +298,7 @@ func _build_tree_area() -> void:
 		container.alignment = BoxContainer.ALIGNMENT_CENTER
 		container.size = _NODE_SIZE
 		container.add_theme_constant_override("separation", 6)
-		_tree_area.add_child(container)
+		_canvas.add_child(container)
 		_containers[t.id] = container
 
 		var icon_btn := TextureButton.new()
@@ -293,6 +339,9 @@ func _build_tree_area() -> void:
 		for parent_id in edges:
 			_edges.append({"child": t.id, "parent": parent_id, "optional": edges[parent_id]})
 
+	_canvas.size = Vector2(_grid_cols * _COL_SPACING, _max_tier * _ROW_SPACING + _NODE_SIZE.y)
+	_layout()
+
 
 # Places sorted_row's columns as close as possible to `desired` while
 # enforcing at least min_gap between neighbors — solved as isotonic
@@ -332,17 +381,48 @@ func _resolve_columns(sorted_row: Array, desired: Dictionary, min_gap: float) ->
 			idx += 1
 
 
-func _reposition() -> void:
-	var avail := _tree_area.size - _NODE_SIZE
-	if avail.x < 0 or avail.y < 0:
-		return
+# Places every node on the canvas. Canvas coordinates don't depend on the
+# screen size — fitting to the screen is _fit_view()'s job (zoom + pan).
+func _layout() -> void:
 	for node_id in _containers:
-		var top_left := Vector2(_col_frac[node_id] * avail.x, _row_frac[node_id] * avail.y) + _pan_offset
+		var top_left: Vector2 = _pos_override.get(node_id, Vector2(
+			_col_frac[node_id] * _grid_cols * _COL_SPACING - _NODE_SIZE.x * 0.5,
+			_row_frac[node_id] * _max_tier * _ROW_SPACING))
 		_containers[node_id].position = top_left
 		# Edges connect at the icon's center, not the whole container's (which
 		# includes the label below it).
 		_centers[node_id] = top_left + Vector2(_NODE_SIZE.x * 0.5, _ICON_SIZE.y * 0.5)
-	_tree_area.queue_redraw()
+	_canvas.queue_redraw()
+
+
+# Zooms out to fit the visible nodes (down to _FIT_MIN_ZOOM) and centers
+# them. If the tree is still taller than the view, tier 0 is kept on screen
+# at the bottom — that's where every path starts.
+func _fit_view() -> void:
+	var area := _tree_area.size
+	if area.x <= 0.0 or area.y <= 0.0:
+		_needs_fit = true
+		return
+	_needs_fit = false
+
+	var bounds := Rect2()
+	var any := false
+	for node_id in _containers:
+		if not _containers[node_id].visible:
+			continue
+		var r := Rect2(_containers[node_id].position, _NODE_SIZE)
+		bounds = r if not any else bounds.merge(r)
+		any = true
+	if not any:
+		return
+	bounds = bounds.grow(20.0)
+
+	var zoom := clampf(minf(area.x / bounds.size.x, area.y / bounds.size.y), _FIT_MIN_ZOOM, 1.0)
+	var pos := (area - bounds.size * zoom) * 0.5 - bounds.position * zoom
+	if bounds.size.y * zoom > area.y:
+		pos.y = area.y - bounds.end.y * zoom
+	_canvas.scale = Vector2.ONE * zoom
+	_canvas.position = pos
 
 
 func _draw_edges() -> void:
@@ -361,7 +441,7 @@ func _draw_edges() -> void:
 		# can also use that") — matches how the tree is meant to read.
 		var from: Vector2 = _centers[child_id] if edge.optional else _centers[parent_id]
 		var to: Vector2 = _centers[parent_id] if edge.optional else _centers[child_id]
-		_tree_area.draw_line(from, to, color, 3.0)
+		_canvas.draw_line(from, to, color, 3.0)
 
 		var direction := (to - from).normalized()
 		if direction != Vector2.ZERO:
@@ -372,7 +452,7 @@ func _draw_edges() -> void:
 func _draw_arrowhead(tip: Vector2, direction: Vector2, color: Color) -> void:
 	var back := tip - direction * _ARROW_LEN
 	var perp := direction.orthogonal() * (_ARROW_WIDTH * 0.5)
-	_tree_area.draw_colored_polygon([tip, back + perp, back - perp], color)
+	_canvas.draw_colored_polygon([tip, back + perp, back - perp], color)
 
 
 # Called right before we send a FrozenStarlight InteractRequest, so the
@@ -394,11 +474,6 @@ func expect_open() -> void:
 # alone would leak them in too; tier is the only reliable filter here).
 const _STARTING_TIER := 0
 
-# Pulled up near the title instead of sitting at row_frac 1.0 (tier 0's
-# normal "bottom of the tree" position) — with every other tier hidden that
-# would otherwise leave a single row stranded far below a wall of empty space.
-const _SELECTION_ROW_FRAC := 0.15
-
 func start_selection() -> void:
 	_selection_mode = true
 	_points_available = 1
@@ -409,27 +484,31 @@ func start_selection() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_refresh()
 	_set_tier_visibility(_STARTING_TIER)
+	_fit_view.call_deferred()
 
 
+# Shows one tier only, packed into a single compact row — in the full tree
+# its nodes are spread under their subtrees, which would leave big empty
+# gaps with every other tier hidden.
 func _set_tier_visibility(only_tier: int) -> void:
-	_row_frac_backup.clear()
+	_pos_override.clear()
+	var shown: Array = []
 	for t in _tree.talents:
-		var shown: bool = t.tier == only_tier
-		_containers[t.id].visible = shown
-		if shown:
-			_row_frac_backup[t.id] = _row_frac[t.id]
-			_row_frac[t.id] = _SELECTION_ROW_FRAC
-	_reposition()
+		_containers[t.id].visible = t.tier == only_tier
+		if t.tier == only_tier:
+			shown.append(t)
+	shown.sort_custom(func(a, b): return _col_frac[a.id] < _col_frac[b.id])
+	for i in shown.size():
+		_pos_override[shown[i].id] = Vector2(i * _COL_SPACING, 0.0)
+	_layout()
 
 
 func _show_all_tiers() -> void:
 	_title_label.text = _TITLE_DEFAULT
 	for t in _tree.talents:
 		_containers[t.id].visible = true
-	for id in _row_frac_backup:
-		_row_frac[id] = _row_frac_backup[id]
-	_row_frac_backup.clear()
-	_reposition()
+	_pos_override.clear()
+	_layout()
 
 
 func _on_talent_synced(points_available: int, learned: Array) -> void:
@@ -448,13 +527,14 @@ func _on_talent_synced(points_available: int, learned: Array) -> void:
 	if not _expect_open:
 		return
 	_expect_open = false
+	if not visible:
+		_fit_view.call_deferred()
 	visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _refresh() -> void:
 	_points_label.text = "Points available: %d" % _points_available
-	_reposition()
 	for t in _tree.talents:
 		var btn: TextureButton = _buttons[t.id]
 		var label: Label = _labels[t.id]
@@ -465,7 +545,7 @@ func _refresh() -> void:
 		label.modulate = color
 		btn.disabled = learned or not available or _points_available <= 0
 		btn.modulate = color
-	_tree_area.queue_redraw()
+	_canvas.queue_redraw()
 
 
 func _on_talent_hovered(node_id: int) -> void:
@@ -474,7 +554,7 @@ func _on_talent_hovered(node_id: int) -> void:
 
 
 func _on_talent_unhovered() -> void:
-	_desc_label.text = ""
+	_desc_label.text = _HINT
 
 
 func _on_talent_pressed(node_id: int) -> void:

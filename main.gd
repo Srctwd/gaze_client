@@ -27,6 +27,7 @@ func _ready() -> void:
 	player_controller.set("equipment", equipment)
 
 	_effects.set("equipment", equipment)
+	Sfx.terrain = _terrain
 
 	_talent_tree_ui = preload("res://ui/talent_tree_ui.gd").new()
 	add_child(_talent_tree_ui)

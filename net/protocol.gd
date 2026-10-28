@@ -35,6 +35,14 @@ const INSPECT_ITEM_REQUEST     := 0x1F
 const INSPECT_ITEM_RESPONSE    := 0x20
 const INTERACT_ENTITY          := 0x22
 const CHEST_RESULT             := 0x23
+const ACTION_WINDUP            := 0x24
+const DELETE_CHARACTER_REQUEST  := 0x25
+const DELETE_CHARACTER_RESPONSE := 0x26
+
+# DeleteCharacterResponse results
+const DELETE_OK        := 0
+const DELETE_NOT_FOUND := 1  # not this account's character, or the login expired
+const DELETE_IN_GAME   := 2  # someone is playing it right now
 # ChestResult codes (ChestOpenResult, stone_gaze src/systems/chest.h)
 const CHEST_OPENED         := 0
 const CHEST_ALREADY_OPENED := 1
@@ -73,6 +81,7 @@ const UNIT_NPC       := 0x08
 const UNIT_RAT       := 0x09
 const UNIT_VALKYRIE  := 0x0A  # models.json "Valkyrie" on the server
 const UNIT_CHEST     := 0x0B  # models.json "Chest" — a placed chest, never moves
+const UNIT_CAVE_RAT  := 0x0C  # models.json "CaveRat"
 
 # ── Locomotion animation state (AnimState enum, network/protocol.h) ────────
 # Carried on SpawnUnit/UnitPos. Ground has no separate idle/walk/run signal —
@@ -98,6 +107,7 @@ const ACTION_NOTHING := 0
 const ACTION_JUMP    := 1
 const ACTION_ATTACK  := 2
 const ACTION_SPELL   := 3
+const ACTION_ABILITY := 13  # actions.json ability — how monsters attack
 
 # ── Action request opcodes (client → server) ───────────────────────────────
 const ACTION_REQ_JUMP   := 0x01  # ActionType::Jump
@@ -110,6 +120,7 @@ const EFFECT_LIGHTNING  := 0x01
 const EFFECT_PROJECTILE := 0x02
 const EFFECT_FLAME      := 0x03
 const EFFECT_FIREBALL   := 0x04
+const EFFECT_TELEPORT   := 0x05  # Blink/Translocate fired — no targets
 
 func _ready() -> void:
 	_load_item_types()
@@ -152,7 +163,7 @@ func _load_item_types() -> void:
 			"name":              item_name,
 			"slots":             entry.get("slots", []),
 			"attack_style":      entry.get("attack_style", "Melee"),
-			"damage":            float(entry.get("damage", 0.0)),
+			"damage":            entry.get("damage", {}),  # element name -> amount, e.g. {"physical": 4.0}
 			"attack_speed_mult": float(entry.get("attack_speed_mult", 1.0)),
 			"two_handed":        entry.get("two_handed", false),
 			"bag_capacity":      int(entry.get("bag_capacity", 0)),
@@ -210,6 +221,12 @@ static func pkt_login(token: String, char_id: int) -> PackedByteArray:
 	for i in token_bytes.size():
 		pkt[2 + i] = token_bytes[i]
 	pkt.encode_u32(2 + token_bytes.size(), char_id)
+	return pkt
+
+# Same layout as pkt_login — only valid at character select.
+static func pkt_delete_character(token: String, char_id: int) -> PackedByteArray:
+	var pkt := pkt_login(token, char_id)
+	pkt[0] = DELETE_CHARACTER_REQUEST
 	return pkt
 
 static func pkt_move_intent(dir: Vector2, rot_y: float, pitch: float) -> PackedByteArray:
@@ -328,7 +345,7 @@ static func pkt_chat_say(text: String) -> PackedByteArray:
 
 # ── Chat/dialog text markup ────────────────────────────────────────────────
 # Shared by chat_input.gd's own "say" label and entity_manager.gd's NPC
-# speech bubbles, so both render npc.json's keyword convention identically
+# speech bubbles, so both render npcs.json's keyword convention identically
 # (e.g. "Would you like to *Trade*?").
 
 # Splits text on '*' pairs so odd-indexed segments ("*Trade*") can be drawn

@@ -581,7 +581,7 @@ func _from_world(m: ShaderMaterial) -> ShaderMaterial:
 		mat.set_shader_parameter("backface_color", _vec(_param(m, "albedo_bottom", Color(0.25, 0.22, 0.20))))
 	elif names.has("cave_tex"):          # cave_mat: zone lighting, no sun
 		mat.set_shader_parameter("albedo_tex", _param(m, "cave_tex", null))
-		mat.set_shader_parameter("projection", 1)
+		mat.set_shader_parameter("projection", 2)   # triplanar, as cave_mat — arches and walls would streak top-down
 		mat.set_shader_parameter("tile_scale", _param(m, "tile_scale", 4.0))
 		mat.set_shader_parameter("tint", _vec(_param(m, "tint", Color.WHITE)))
 		mat.set_shader_parameter("dir_light_scale", 0.0)

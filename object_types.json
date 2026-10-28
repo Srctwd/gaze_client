@@ -1,0 +1,58 @@
+[
+  {
+    "id": 0,
+    "name": "Tree",
+    "mesh": "res://assets/tree01.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.42
+  },
+  {
+    "id": 1,
+    "name": "Rock",
+    "mesh": "res://assets/meshes/rock01.glb",
+    "collision_ratio": 1.1,
+    "height_ratio": 1.2,
+    "scale_ratio": 1.1
+  },
+  {
+    "id": 2,
+    "name": "FrozenStarlight",
+    "mesh": "res://assets/props/frozenstarlight.tscn",
+    "collision_ratio": 0.25,
+    "height_ratio": 2.0,
+    "scale_ratio": 1.0
+  },
+  {
+    "id": 7,
+    "name": "Tree02",
+    "mesh": "res://assets/tree02.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.21
+  },
+  {
+    "id": 8,
+    "name": "Tree02_b",
+    "mesh": "res://assets/tree02_b.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.21
+  },
+  {
+    "id": 9,
+    "name": "Tree03",
+    "mesh": "res://assets/tree03.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.21
+  },
+  {
+    "id": 10,
+    "name": "Tree03_b",
+    "mesh": "res://assets/tree03_b.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.21
+  }
+]

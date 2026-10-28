@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://bpatb3tr0bbsa"]
+
+[ext_resource type="PackedScene" uid="uid://dm8oeguer3ngm" path="res://assets/meshes/frozenstarlight.glb" id="1_v5wu3"]
+
+[node name="frozenstarlight" unique_id=2083489491 instance=ExtResource("1_v5wu3")]
+transform = Transform3D(0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0)
+
+[node name="OmniLight3D" type="OmniLight3D" parent="." index="1" unique_id=80079065]
+transform = Transform3D(3.333333, 0, 0, 0, 3.333333, 0, 0, 0, 3.333333, 0, 1.0332824, 0)
+light_color = Color(0, 0, 1, 1)
+omni_range = 0.848

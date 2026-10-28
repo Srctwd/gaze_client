@@ -59,7 +59,7 @@ draw_pass_1 = SubResource("QuadMesh_fju7r")
 
 [node name="OmniLight3D" type="OmniLight3D" parent="." index="4" unique_id=1180451203]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 6.49345, 0)
-light_color = Color(1, 0.4, 0.26666668, 1)
+light_color = Color(1, 0.72, 0.48, 1)
 omni_range = 12.0
 omni_attenuation = 0.25
 omni_shadow_mode = 0

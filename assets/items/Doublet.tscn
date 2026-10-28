@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" uid="uid://gqreap0ysrka" path="res://assets/meshes/doublet.glb" id="1_doublet"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2_prefab"]
+
+[node name="Doublet" instance=ExtResource("1_doublet")]
+transform = Transform3D(0.33, 0, 0, 0, 0.33, 0, 0, 0, 0.33, 0, 0, -0.05683765)
+script = ExtResource("2_prefab")
+
+[node name="ChestGrip" type="Marker3D" parent="." index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.601, -0.0375)

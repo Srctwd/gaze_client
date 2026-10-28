@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://bbnh1os28562f"]
+
+[ext_resource type="PackedScene" uid="uid://de77eisoa3wkp" path="res://assets/meshes/rat_tail.glb" id="1_7ciup"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2_gt6ty"]
+
+[node name="rat_tail" unique_id=1312259886 instance=ExtResource("1_7ciup")]
+
+[node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=1432885569]
+script = ExtResource("2_gt6ty")

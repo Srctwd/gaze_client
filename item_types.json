@@ -137,5 +137,35 @@
     "attack_speed_mult": 1.0,
     "two_handed": false,
     "armor": 1
+  },
+  {
+    "id": 14,
+    "name": "RatTail",
+    "slots": ["MainHand", "OffHand"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "max_stack": 10,
+    "size": "Small"
+  },
+  {
+    "id": 15,
+    "name": "SmallClub",
+    "slots": ["MainHand", "OffHand", "Sheath"],
+    "attack_style": "Melee",
+    "damage": 2.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false
+  },
+  {
+    "id": 16,
+    "name": "Doublet",
+    "slots": ["BodyArmor"],
+    "attack_style": "Melee",
+    "damage": 0.0,
+    "attack_speed_mult": 1.0,
+    "two_handed": false,
+    "armor": 2
   }
 ]

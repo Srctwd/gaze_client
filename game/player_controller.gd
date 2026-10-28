@@ -173,6 +173,10 @@ func _input(event: InputEvent) -> void:
 		Network.send(Protocol.pkt_cast(0, aimed_id if aimed_id != -1 else 0))
 	if event.keycode == KEY_2:
 		Network.send(Protocol.pkt_cast(1, 0))
+	if event.keycode == KEY_3:
+		Network.send(Protocol.pkt_cast(2, 0))  # Blink
+	if event.keycode == KEY_4:
+		Network.send(Protocol.pkt_cast(3, 0))  # Translocate
 	if event.keycode == KEY_SPACE:
 		Network.send(Protocol.pkt_action(Protocol.ACTION_REQ_JUMP))
 	if event.keycode == KEY_G:

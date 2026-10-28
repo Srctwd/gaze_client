@@ -28,11 +28,20 @@ var _pitch_tilts: Dictionary = {}
 # cached on spawn so the FP camera can track the actual head bone instead of
 # a fixed eye-height guess. Null if the equipped model has no such marker.
 var _player_head: Node3D = null
+# Head position in the body's own space, from the last locomotion frame — the
+# eye holds it while an action clip (Swing) throws the head around, so the
+# view keeps walk bob but not the swing. See _player_eye.
+var _player_head_offset: Vector3
+var _player_head_offset_valid := false
 
 # Per-tick position delta above which Ground state counts as "moving" rather
 # than idle — small enough to catch normal walk speed, big enough to ignore
 # interpolation/network jitter.
 const _MOVE_EPS := 0.05
+
+# Per-update position jump above which the body snaps instead of easing — a
+# Blink/Translocate, not movement (a fall at 20 Hz would need ~120 m/s).
+const _SNAP_DIST := 6.0
 
 # How long a freshly spawned monster's meshes stay hidden before revealing —
 # effects.gd's portal (also reacting to Network.unit_spawned) can lag a beat
@@ -52,6 +61,22 @@ const _ANIM_CLIP := {
 # and looping one would never stop.
 const _LOCOMOTION_CLIPS := ["Idle", "Walk", "Jump", "Fall", "Swim"]
 
+# Windup (Network.action_windup) for models whose scene root sets
+# metadata/swing_impact — seconds into "Swing" where the blow lands. The
+# windup plays Swing up to that point, timed to arrive on the server's hit,
+# and holds the pose there; ActionOk plays the rest. Models without it just
+# play the whole Swing on ActionOk.
+const _SWING_IMPACT_META := &"swing_impact"
+# Slowest the lead-in plays — a long windup reaches the impact pose early and
+# holds it instead of crawling there in slow motion.
+const _WINDUP_MIN_SPEED := 0.6
+# How long past the expected hit to keep holding before giving up on an
+# ActionOk that isn't coming (e.g. a ranged attack resolves as FreeAimShot).
+const _WINDUP_GRACE := 0.5
+
+var _swing_impacts: Dictionary = {}  # net_id -> seconds into Swing, for models that set it
+var _windup_until:  Dictionary = {}  # net_id -> Time.get_ticks_msec() to stop holding a windup
+
 # Chests are units that never move. Whether one is open is per player and
 # never sent ahead of time — it's learned from the server's ChestResult to our
 # own E-press, so a chest we looted in an earlier session shows closed until
@@ -67,10 +92,10 @@ var _slime_scenes: Array     = []  # index by (variant >> 6) & 0x3
 # NPC speech bubble: a single 2D BBCode RichTextLabel, screen-projected each
 # frame to sit chest-high above the NPC's body, shown whenever the server
 # relays a reply (Network.npc_speech). One node per NPC (not several stitched
-# together) so text wrapped in a pair of '*' (npc.json's convention for
+# together) so text wrapped in a pair of '*' (npcs.json's convention for
 # keywords, e.g. "Would you like to *Trade*?") can just be colored inline via
 # BBCode instead of manually laying out separate labels side by side.
-const _NPC_SPEECH_HEIGHT     := 1.4  # body.position is ground/feet level (see _GROUND_RADIUS)
+const _NPC_SPEECH_HEIGHT     := 1.4  # body.position is ground/feet level (see _body_dims)
 const _NPC_SPEECH_JITTER     := 0.3  # random x/y offset so replies don't always land in the same spot
 const _NPC_SPEECH_HIDE_DELAY := 6.0
 const _NPC_SPEECH_COLOR      := Color.YELLOW
@@ -89,26 +114,16 @@ var _npc_timers:  Dictionary = {}  # net_id (int) -> Timer
 # The server tracks position.y as the center of a physics sphere resting on
 # the ground (stone_gaze/src/systems/physics.cpp: terrain_surface = sample_floor
 # (...) + rb.radius, applied identically whether grounded, jumping, falling, or
-# swimming) — so the Y it sends is always ground_height + this radius, never
-# literal feet height. Values match monster_types.json's per-type "radius"
-# field (default 0.5); the player's comes from spawn.cpp's RigidBody .radius
-# (0.4). Wall/object tops use the same top + radius offset. Subtracted unconditionally in every anim
-# state below, since the server's offset is constant across all of them —
-# conditioning this on Ground state (as an earlier attempt did) reintroduces
-# exactly the pop this avoids, right at the Ground/Jump boundary.
-const _GROUND_RADIUS := {
-	Protocol.UNIT_PLAYER:    0.4,
-	Protocol.UNIT_MINOTAUR:  0.5,
-	Protocol.UNIT_MINO_MAGE: 0.5,
-	Protocol.UNIT_SLIME:     0.5,
-	Protocol.UNIT_SNAKE:     0.4,
-	Protocol.UNIT_GOBLIN:    0.35,
-	Protocol.UNIT_DEMON:     0.5,
-	Protocol.UNIT_RAT:       0.3,
-	Protocol.UNIT_NPC:       0.5,
-	Protocol.UNIT_VALKYRIE:  0.5,
-	Protocol.UNIT_CHEST:     0.0,  # placed, no RigidBody — y is the floor itself
-}
+# swimming) — so the Y it sends is always ground_height + radius, never literal
+# feet height. Subtracted unconditionally in every anim state, since the
+# server's offset is constant across all of them — conditioning this on Ground
+# state (as an earlier attempt did) reintroduces exactly the pop this avoids,
+# right at the Ground/Jump boundary.
+# Each unit's body arrives in SpawnUnit (stone_gaze models.json, the single
+# source): x = radius, y = height, spanning position.y - radius (feet) to
+# position.y + height. Zero for units with no body (chests — y is the floor).
+var _body_dims: Dictionary = {}  # net_id (int) -> Vector2(radius, height)
+const _DEFAULT_BODY := Vector2(0.5, 1.0)  # ModelDef defaults, until SpawnUnit says otherwise
 
 # 4 hues per unit type, indexed by headgear bits (variant >> 6) & 0x3
 const _VARIANT_PALETTES := {
@@ -140,6 +155,7 @@ func _ready() -> void:
 	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/meshes/goblin01.glb")
 	_mesh_by_type[Protocol.UNIT_DEMON]     = load("res://assets/monsters/low_poly_demon_man_v_3.tscn")
 	_mesh_by_type[Protocol.UNIT_RAT]       = load("res://assets/monsters/Rat.tscn")
+	_mesh_by_type[Protocol.UNIT_CAVE_RAT]  = load("res://assets/monsters/CaveRat.tscn")
 	_mesh_by_type[Protocol.UNIT_NPC]       = load("res://assets/npcs/Feras.tscn")
 	_mesh_by_type[Protocol.UNIT_VALKYRIE]  = load("res://assets/monsters/Valkyrie.tscn")
 	_mesh_by_type[Protocol.UNIT_CHEST]     = load("res://assets/meshes/chest01.glb")
@@ -156,6 +172,7 @@ func _ready() -> void:
 	Network.xp_gained.connect(_on_xp_gained)
 	Network.level_up.connect(_on_level_up)
 	Network.action_ok.connect(_on_action_ok)
+	Network.action_windup.connect(_on_action_windup)
 	Network.npc_speech.connect(_on_npc_speech)
 	Network.chest_result.connect(_on_chest_result)
 	Network.login_ok.connect(func(_id: int): opened_chests.clear())
@@ -169,9 +186,12 @@ func _on_unit_destroyed(net_id: int) -> void:
 	if entities.has(net_id):
 		entities[net_id].queue_free()
 		entities.erase(net_id)
+		_body_dims.erase(net_id)
 		_targets.erase(net_id)
 		_anim_players.erase(net_id)
 		_current_anim.erase(net_id)
+		_swing_impacts.erase(net_id)
+		_windup_until.erase(net_id)
 		_pitch_tilts.erase(net_id)
 		if _npc_labels.has(net_id):
 			_npc_labels[net_id].queue_free()  # also frees its child Timer, see _on_npc_speech
@@ -251,7 +271,7 @@ func _process(delta: float) -> void:
 			body.rotation.y = _npc_speech_camera.yaw + PI
 			player_moved.emit(body.position)
 			if _player_head:
-				player_head_moved.emit(_player_head.global_position)
+				player_head_moved.emit(_player_eye(net_id, body))
 		elif chests.has(net_id):
 			body.rotation.y = tgt.rot_y
 		else:
@@ -335,11 +355,12 @@ func set_first_person(fp: bool) -> void:
 		for mi in body.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).visible = not fp
 
-func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _anim_state: int) -> void:
+func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _anim_state: int, radius: float, height: float) -> void:
 	if entities.has(net_id):
 		return
+	_body_dims[net_id] = Vector2(radius, height)
 	var body := _make_body(net_id, unit_type, variant)
-	pos.y -= _GROUND_RADIUS.get(unit_type, 0.5)
+	pos.y -= radius
 	body.position = pos
 	get_parent().add_child(body)
 	entities[net_id] = body
@@ -367,7 +388,7 @@ func _delay_monster_reveal(body: Node3D) -> void:
 func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y: float, pitch: float, anim_state: int) -> void:
 	# Chest models are authored facing the server's own yaw convention.
 	var rot := rot_y if unit_type == Protocol.UNIT_CHEST else rot_y + PI
-	pos.y -= _GROUND_RADIUS.get(unit_type, 0.5)
+	pos.y -= (_body_dims.get(net_id, _DEFAULT_BODY) as Vector2).x
 	if not entities.has(net_id):
 		var body := _make_body(net_id, unit_type, variant)
 		# Snap on first sight — nothing to interpolate from yet, and easing in
@@ -387,7 +408,10 @@ func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y
 	# one — the server doesn't split Ground into idle/walk/run on its own.
 	var is_moving := false
 	if _targets.has(net_id):
-		is_moving = (pos - (_targets[net_id].pos as Vector3)).length() > _MOVE_EPS
+		var jump := (pos - (_targets[net_id].pos as Vector3)).length()
+		is_moving = jump > _MOVE_EPS
+		if jump > _SNAP_DIST:
+			entities[net_id].position = pos
 	_targets[net_id] = {pos = pos, rot_y = rot, pitch = pitch, anim_state = anim_state, is_moving = is_moving}
 
 func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
@@ -397,6 +421,7 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 		for mi in body.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).visible = not GameState.first_person
 		_player_head = body.find_child("Head", true, false) as Node3D
+		_player_head_offset_valid = false
 	else:
 		body = StaticBody3D.new()
 		var scene: PackedScene
@@ -421,21 +446,17 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 			body.add_child(box_col)
 			body.set_meta("net_id", net_id)
 			return body
+		# The server's body (see _body_dims): feet to position.y + height.
+		var dims: Vector2 = _body_dims.get(net_id, _DEFAULT_BODY)
 		var shape := CylinderShape3D.new()
-		if unit_type == Protocol.UNIT_SLIME:
-			shape.radius = 0.3
-			shape.height = 0.6
-		else:
-			shape.radius = 0.5
-			shape.height = 2.0
+		shape.radius = dims.x
+		shape.height = dims.x + dims.y
 		var col := CollisionShape3D.new()
 		col.shape = shape
 		# body.position is ground/feet level (see the XP-orb +Vector3(0,1.2,0)
 		# offset elsewhere in this file); a CylinderShape3D is centered on its
 		# own origin, so without this lift half the collider sits buried
-		# underground — for slimes (height 0.6) that leaves only 0.3m poking
-		# above ground, well below where a free-aim shot flies, so it always
-		# sailed past them. Mirrors world_data.gd's _with_cylinder_collision.
+		# underground. Mirrors world_data.gd's _with_cylinder_collision.
 		col.position.y = shape.height * 0.5
 		body.add_child(col)
 	body.set_meta("net_id", net_id)
@@ -488,6 +509,13 @@ func _apply_variant(body: Node3D, unit_type: int, variant: int) -> void:
 		mat.albedo_color = tint
 		mi.material_override = mat
 
+func _player_eye(net_id: int, body: Node3D) -> Vector3:
+	if _current_anim.get(net_id) in _LOCOMOTION_CLIPS or not _player_head_offset_valid:
+		_player_head_offset = body.to_local(_player_head.global_position)
+		_player_head_offset_valid = true
+		return _player_head.global_position
+	return body.to_global(_player_head_offset)
+
 # Not for the local player: the FP camera follows the Head bone (_player_head),
 # so bending our own spine would move our eye.
 func _attach_pitch_tilt(net_id: int, body: Node3D) -> void:
@@ -513,20 +541,56 @@ func _cache_anim_player(net_id: int, body: Node3D) -> void:
 		if player.has_animation(anim_name):
 			player.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
 	_anim_players[net_id] = player
+	# The model's scene root is the body's direct child (player.tscn's Mesh
+	# for the local player).
+	for child in body.get_children():
+		if child.has_meta(_SWING_IMPACT_META):
+			_swing_impacts[net_id] = float(child.get_meta(_SWING_IMPACT_META))
 
 func _on_action_ok(actor_id: int, effect: int, _target_id: int, action_type: int) -> void:
+	# Any resolved action ends a held windup, swing or not.
+	var was_winding_up: bool = _windup_until.erase(actor_id)
 	if action_type != Protocol.ACTION_ATTACK or effect != Protocol.EFFECT_SWING:
 		return
 	var player := _anim_players.get(actor_id) as AnimationPlayer
 	if player == null or not player.has_animation("Swing"):
 		return
-	player.play("Swing")
+	# stop() first: play() on the clip already loaded would just resume it.
+	player.stop(true)
+	if was_winding_up:
+		player.play_section("Swing", _swing_impacts[actor_id])
+	else:
+		player.play("Swing")
 	_current_anim[actor_id] = "Swing"
+
+func _on_action_windup(actor_id: int, action_type: int, windup: float) -> void:
+	var player := _anim_players.get(actor_id) as AnimationPlayer
+	if player == null or not _swing_impacts.has(actor_id) or not player.has_animation("Swing"):
+		return
+	if action_type == Protocol.ACTION_NOTHING:
+		# Cancelled — let _drive_animation resume locomotion.
+		if _windup_until.erase(actor_id):
+			player.stop()
+			_current_anim.erase(actor_id)
+		return
+	if action_type != Protocol.ACTION_ATTACK and action_type != Protocol.ACTION_ABILITY:
+		return
+	var impact: float = _swing_impacts[actor_id]
+	var speed := maxf(impact / maxf(windup, 0.01), _WINDUP_MIN_SPEED)
+	player.stop(true)
+	player.play_section("Swing", 0.0, impact, -1, speed)
+	_current_anim[actor_id] = "Swing"
+	_windup_until[actor_id] = Time.get_ticks_msec() + int((windup + _WINDUP_GRACE) * 1000.0)
 
 func _drive_animation(net_id: int, tgt: Dictionary) -> void:
 	var player := _anim_players.get(net_id) as AnimationPlayer
 	if player == null:
 		return
+	# Hold a windup's impact pose until ActionOk, a cancel, or the grace runs out.
+	if _windup_until.has(net_id):
+		if Time.get_ticks_msec() < _windup_until[net_id]:
+			return
+		_windup_until.erase(net_id)
 	# Let a one-shot action clip (e.g. Swing) finish before resuming
 	# locomotion instead of stomping it every frame.
 	if player.is_playing() and not (_current_anim.get(net_id) in _LOCOMOTION_CLIPS):

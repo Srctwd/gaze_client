@@ -1,6 +1,9 @@
 [gd_scene format=3 uid="uid://dswempjdhqoj7"]
 
 [ext_resource type="PackedScene" uid="uid://6s6fwtmkfjbi" path="res://assets/meshes/arrow.glb" id="1"]
+[ext_resource type="Script" uid="uid://ba2r0dll7abg" path="res://assets/projectiles/projectile.gd" id="proj_script"]
 
 [node name="arrow" unique_id=1071717718 instance=ExtResource("1")]
+script = ExtResource("proj_script")
+hit_sound = "pierce"
 transform = Transform3D(0.105, 0, 0, 0, -0.10499999, 9.179391e-09, 0, -9.179391e-09, -0.10499999, 0, 0, -0.39936888)

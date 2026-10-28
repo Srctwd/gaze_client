@@ -5,7 +5,7 @@
     "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
     "climbable": false,
     "illusory": false,
-    "jitter": 1.0
+    "jitter": 0.54
   },
   {
     "id": 1,
@@ -18,6 +18,7 @@
   {
     "id": 2,
     "name": "Ladder",
+    "mesh": "res://assets/props/Ladder.tscn",
     "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
     "climbable": true,
     "illusory": false,
@@ -53,6 +54,6 @@
     "texture": "res://assets/textures/black_marble_wall.png",
     "climbable": false,
     "illusory": false,
-    "jitter": 0.35
+    "jitter": 0.3
   }
 ]

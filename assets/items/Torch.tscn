@@ -49,6 +49,7 @@ alpha_curve = SubResource("CurveTexture_tyv0i")
 [node name="Torch" type="Node3D" unique_id=1121564444]
 transform = Transform3D(0.145, 0, 0, 0, -6.3381513e-09, 0.145, 0, -0.145, -6.3381513e-09, 0, 0, 0)
 script = ExtResource("1_iahd2")
+hit_sound = "fire"
 
 [node name="torch01" parent="." unique_id=1152962316 instance=ExtResource("1_g8p30")]
 
@@ -66,7 +67,7 @@ draw_pass_1 = SubResource("QuadMesh_6yvt0")
 
 [node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=1600674039]
 transform = Transform3D(3.333333, 0, 0, 0, 3.333333, 0, 0, 0, 3.333333, 0, 5.622071, 0.49999997)
-light_color = Color(1, 0.4, 0.26666668, 1)
+light_color = Color(1, 0.72, 0.48, 1)
 omni_range = 30.0
 omni_attenuation = 0.25
 omni_shadow_mode = 0

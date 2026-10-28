@@ -49,11 +49,15 @@ var _wall_mats        : Dictionary = {}
 # _WALL_JITTER / _WALL_JITTER_Y, 0 = flat, e.g. cut marble). Missing = 1.
 var _wall_jitter      : Dictionary = {}
 var _wall_mat_default : ShaderMaterial
-# Static object type id -> {mesh, scale_ratio, resource}. Read directly from
-# world.bin's trailing static-type table (written by world_editor's save(),
-# derived from its `object_types` file) — so a new object type needs no code
-# change here at all. Missing/corrupt table (old world.bin) or an id absent
-# from it falls back to _FALLBACK_PATH instead of the wrong mesh/scale.
+# Wall type id -> {scene, aabb} for types drawn as a model instead of a
+# textured box (wall_types.json "mesh", e.g. the ladder) — see _spawn_wall_prop.
+var _wall_props       : Dictionary = {}
+# Static object type id -> {mesh, scale_ratio, collision_ratio, resource}.
+# From object_types.json — the same file the server sizes its colliders with
+# (col_r = radius * collision_ratio), so both agree — like walls above.
+# world.bin's trailing static-type table only fills in ids the JSON lacks.
+# An id in neither falls back to _FALLBACK_PATH instead of the wrong mesh/scale.
+const _OBJECT_TYPES_PATH := "res://object_types.json"
 var _static_type_defs : Dictionary = {}
 
 
@@ -241,15 +245,17 @@ func load(path: String) -> bool:
 
 	_material      = WorldShaders.surface_mat(Color(0.35, 0.52, 0.28))
 	_mat_cave       = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))
-	_mat_cave_floor = WorldShaders.cave_mat(Color(0.30, 0.20, 0.13))
+	_mat_cave_floor = WorldShaders.cave_mat(Color(0.27, 0.23, 0.18))
 	_fallback_scene = load(_FALLBACK_PATH)
 	_load_wall_types()
+	_load_object_types()
 	return true
 
 
 func _load_wall_types() -> void:
 	_wall_mats.clear()
 	_wall_jitter.clear()
+	_wall_props.clear()
 	_wall_mat_default = WorldShaders.wall_mat()
 	var wf := FileAccess.open(_WALL_TYPES_PATH, FileAccess.READ)
 	if wf == null:
@@ -262,6 +268,15 @@ func _load_wall_types() -> void:
 	for row: Dictionary in rows:
 		var wid  := int(row.get("id", 0))
 		_wall_jitter[wid] = float(row.get("jitter", 1.0))
+		var mesh_path := row.get("mesh", "") as String
+		if not mesh_path.is_empty():
+			var scene := load(mesh_path) as PackedScene
+			if scene == null:
+				push_error("WorldData: wall type %d mesh failed to load: %s" % [wid, mesh_path])
+			else:
+				var probe := scene.instantiate() as Node3D
+				_wall_props[wid] = {"scene": scene, "aabb": _node_aabb(probe, Transform3D.IDENTITY)}
+				probe.free()
 		var path := row.get("texture", "") as String
 		if path.is_empty():
 			continue
@@ -279,6 +294,24 @@ func _load_wall_types() -> void:
 			push_error("WorldData: wall type %d texture failed to load: %s" % [wid, path])
 			continue
 		_wall_mats[wid] = WorldShaders.wall_mat(tex)
+
+
+func _load_object_types() -> void:
+	var of := FileAccess.open(_OBJECT_TYPES_PATH, FileAccess.READ)
+	if of == null:
+		push_error("WorldData: cannot open " + _OBJECT_TYPES_PATH)
+		return
+	var rows = JSON.parse_string(of.get_as_text())
+	if typeof(rows) != TYPE_ARRAY:
+		push_error("WorldData: " + _OBJECT_TYPES_PATH + " is not a JSON array")
+		return
+	for row: Dictionary in rows:
+		_static_type_defs[int(row.get("id", 0))] = {
+			"mesh":            row.get("mesh", "") as String,
+			"scale_ratio":     float(row.get("scale_ratio", 1.0)),
+			"collision_ratio": float(row.get("collision_ratio", 1.0)),
+			"resource":        null,
+		}
 
 
 func _static_type_resource(id: int) -> Resource:
@@ -315,6 +348,20 @@ func _instantiate_static_type(id: int) -> Node3D:
 func chunk_coords_at(wx: float, wz: float) -> Vector2i:
 	var size := chunk_cells * cell_size
 	return Vector2i(floori((wx - world_ox) / size), floori((wz - world_oz) / size))
+
+
+# Footstep surface at feet position `feet`: "stone" on anything built (a floor,
+# stairs, a wall top — feet off the terrain) or down in a cave, otherwise the
+# terrain's biome — "grass" when its ground texture is a grass one.
+func footstep_surface(feet: Vector3) -> String:
+	var ground := _get_height_at(feet.x, feet.z)
+	if is_nan(ground) or absf(feet.y - ground) > 0.3:
+		return "stone"
+	var i := chunk_index(chunk_coords_at(feet.x, feet.z))
+	if i < 0:
+		return "stone"
+	var biome := _biomes_by_id.get((_chunks[i] as Dictionary).get("biome", 0), {}) as Dictionary
+	return "grass" if str(biome.get("material", "")).to_lower().contains("grass") else "stone"
 
 
 func chunk_index(c: Vector2i) -> int:
@@ -391,14 +438,18 @@ func spawn_static(parent: Node3D) -> void:
 		var id   := obj.type as int
 		var node := _instantiate_static_type(id)
 		var scale_ratio := 1.0
+		var collision_ratio := 1.0
 		if node == null:
 			if _fallback_scene == null: continue
 			node = _fallback_scene.instantiate() as Node3D
 		else:
-			scale_ratio = (_static_type_defs[id] as Dictionary).get("scale_ratio", 1.0) as float
+			scale_ratio     = (_static_type_defs[id] as Dictionary).get("scale_ratio", 1.0) as float
+			collision_ratio = (_static_type_defs[id] as Dictionary).get("collision_ratio", 1.0) as float
 		node.position = Vector3(obj.x, wy, obj.z)
-		node.scale    = Vector3.ONE * ((obj.radius as float) / scale_ratio)
-		parent.add_child(_with_cylinder_collision(node, obj.radius as float, obj.height as float))
+		# collision_ratio scales the model with its collider (server col_r = radius * ratio).
+		# Multiplied onto the scene's own root scale (e.g. a .tscn shrinking its model).
+		node.scale    = node.scale * ((obj.radius as float) * collision_ratio / scale_ratio)
+		parent.add_child(_with_cylinder_collision(node, (obj.radius as float) * collision_ratio, obj.height as float))
 
 	_spawn_walls(parent)
 
@@ -793,6 +844,10 @@ func _spawn_walls(parent: Node3D) -> void:
 			cs.position = b.get_center()
 			body.add_child(cs)
 		parent.add_child(body)
+		if _wall_props.has(wb.type as int):
+			for b in pieces:
+				_spawn_wall_prop(body, b, _wall_props[wb.type as int])
+			continue
 
 		var turn := fposmod(wb.rot_y as float, PI * 0.5)
 		if turn < 1e-3 or turn > PI * 0.5 - 1e-3:
@@ -827,6 +882,47 @@ func _spawn_walls(parent: Node3D) -> void:
 			mi.mesh        = mesh
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 			(job.parent as Node3D).add_child(mi)
+
+
+# Fills one wall piece (body frame) with copies of a wall type's model: its
+# width along the piece's longer side, tiled along that side and up the
+# height in whole copies, each stretched to fill its cell; its depth fills
+# the shorter side.
+func _spawn_wall_prop(parent: Node3D, piece: AABB, prop: Dictionary) -> void:
+	var m: AABB = prop.aabb
+	if m.size.x <= 0.0 or m.size.y <= 0.0 or m.size.z <= 0.0: return
+	var along_x := piece.size.x >= piece.size.z
+	var w := piece.size.x if along_x else piece.size.z
+	var d := piece.size.z if along_x else piece.size.x
+	var nw := maxi(1, roundi(w / m.size.x))
+	var nh := maxi(1, roundi(piece.size.y / m.size.y))
+	var cell := Vector3(w / nw, piece.size.y / nh, d)
+	var turn := Basis.IDENTITY if along_x else Basis(Vector3.UP, PI * 0.5)
+	var fit := turn * Basis.from_scale(cell / m.size)
+	var side := Vector3.RIGHT if along_x else Vector3.FORWARD
+	var start := piece.get_center() - side * (w * 0.5) + Vector3(0.0, -piece.size.y * 0.5, 0.0)
+	for i in nw:
+		for j in nh:
+			var center := start + side * cell.x * (i + 0.5) + Vector3.UP * cell.y * (j + 0.5)
+			var inst := (prop.scene as PackedScene).instantiate() as Node3D
+			inst.transform = Transform3D(fit, center - fit * m.get_center())
+			parent.add_child(inst)
+
+
+# Bounds of every mesh under `node`, in the frame `xform` maps node's own
+# space into (identity for a scene root, whose transform placement replaces).
+static func _node_aabb(node: Node, xform: Transform3D) -> AABB:
+	var out := AABB()
+	var first := true
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		out = xform * (node as MeshInstance3D).mesh.get_aabb()
+		first = false
+	for child in node.get_children():
+		var a := _node_aabb(child, xform * (child as Node3D).transform if child is Node3D else xform)
+		if a.size == Vector3.ZERO: continue
+		out = a if first else out.merge(a)
+		first = false
+	return out
 
 
 # Base sits at ground_y + y_offset (lets a wall float, e.g. act as a

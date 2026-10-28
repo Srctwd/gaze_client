@@ -37,6 +37,7 @@ const _MONSTER_TYPES := {
 	Protocol.UNIT_GOBLIN:    true,
 	Protocol.UNIT_DEMON:     true,
 	Protocol.UNIT_RAT:       true,
+	Protocol.UNIT_CAVE_RAT:  true,
 	Protocol.UNIT_VALKYRIE:  true,
 }
 const _PORTAL_FALLBACK_DURATION := 1.5  # used only if the glb has no AnimationPlayer/clip to time off of
@@ -328,7 +329,7 @@ func _portal_prefab() -> PackedScene:
 		_portal_scene = load(path)
 	return _portal_scene
 
-func _on_unit_spawned(net_id: int, unit_type: int, _variant: int, _pos: Vector3, _anim_state: int) -> void:
+func _on_unit_spawned(net_id: int, unit_type: int, _variant: int, _pos: Vector3, _anim_state: int, _radius: float, _height: float) -> void:
 	if _login_sync_active or not _MONSTER_TYPES.has(unit_type):
 		return
 	# Deferred so entity_manager.gd (also listening to Network.unit_spawned) has

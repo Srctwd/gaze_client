@@ -31,6 +31,7 @@ GameState="*res://game_state.gd"
 Network="*res://net/network.gd"
 Protocol="*res://net/protocol.gd"
 Ps2="*res://ps2/ps2.gd"
+Sfx="*res://game/sfx.gd"
 
 [display]
 

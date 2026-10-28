@@ -3,7 +3,8 @@
 [ext_resource type="PackedScene" uid="uid://cue3qamvbl8tb" path="res://assets/meshes/Rat.glb" id="1_k3pg1"]
 
 [node name="Rat" unique_id=563828277 instance=ExtResource("1_k3pg1")]
-transform = Transform3D(2.1, 0, 0, 0, 2.1, 0, 0, 0, 2.1, 0, 0, 0)
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)
+metadata/swing_impact = 0.46
 
 [node name="Skeleton3D" parent="Armature" parent_id_path=PackedInt32Array(1029824809) index="0" unique_id=1079368563]
 bones/0/rotation = Quaternion(0, 0, 0, 1)

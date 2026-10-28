@@ -17,6 +17,12 @@ var _list_container: VBoxContainer
 var _name_field: LineEdit
 var _race_option: OptionButton
 var _create_error: Label
+var _delete_dialog: ConfirmationDialog
+var _delete_char_id: int = -1  # waiting on the confirm dialog
+var _delete_char_name: String = ""
+var _delete_label: Label
+var _delete_name_field: LineEdit
+var _select_error: Label
 
 
 func _ready() -> void:
@@ -40,6 +46,11 @@ func _ready() -> void:
 
 	_list_container = VBoxContainer.new()
 	_select_panel.add_child(_list_container)
+
+	_select_error = Label.new()
+	_select_error.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_select_error.modulate = Color(1, 0.3, 0.3)
+	_select_panel.add_child(_select_error)
 
 	_select_panel.add_child(HSeparator.new())
 
@@ -87,6 +98,27 @@ func _ready() -> void:
 	create_btn.pressed.connect(_on_create_pressed)
 	btn_row.add_child(create_btn)
 
+	# ── Delete confirmation ────────────────────────────────────────
+	_delete_dialog = ConfirmationDialog.new()
+	_delete_dialog.title = "Delete Character"
+	_delete_dialog.ok_button_text = "Delete"
+	_delete_dialog.confirmed.connect(_on_delete_confirmed)
+	_delete_dialog.canceled.connect(func() -> void: _delete_char_id = -1)
+	add_child(_delete_dialog)
+
+	# Typing the name is the confirmation — Delete stays disabled until it matches.
+	var del_box := VBoxContainer.new()
+	_delete_dialog.add_child(del_box)
+	_delete_label = Label.new()
+	del_box.add_child(_delete_label)
+	_delete_name_field = LineEdit.new()
+	_delete_name_field.placeholder_text = "Character name"
+	_delete_name_field.text_changed.connect(func(text: String) -> void:
+		_delete_dialog.get_ok_button().disabled = text != _delete_char_name)
+	del_box.add_child(_delete_name_field)
+	_delete_dialog.register_text_enter(_delete_name_field)
+	Network.character_deleted.connect(_on_character_deleted)
+
 	visible = false
 
 
@@ -97,6 +129,7 @@ func show_for_token(token: String) -> void:
 
 
 func _show_select() -> void:
+	_select_error.text = ""
 	_select_panel.visible = true
 	_create_panel.visible = false
 
@@ -113,10 +146,17 @@ func _populate_list(characters: Array) -> void:
 	for child in _list_container.get_children():
 		child.queue_free()
 	for c in characters:
+		var row := HBoxContainer.new()
+		_list_container.add_child(row)
 		var btn := Button.new()
 		btn.text = "%s  (Lvl %d %s)" % [c["name"], _xp_to_level(c["experience"]), RACES[c["race"]]]
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.pressed.connect(_on_character_selected.bind(c["id"]))
-		_list_container.add_child(btn)
+		row.add_child(btn)
+		var del_btn := Button.new()
+		del_btn.text = "Delete"
+		del_btn.pressed.connect(_on_delete_pressed.bind(c["id"], c["name"]))
+		row.add_child(del_btn)
 
 
 func _on_character_selected(char_id: int) -> void:
@@ -124,6 +164,36 @@ func _on_character_selected(char_id: int) -> void:
 	get_viewport().gui_release_focus()
 	visible = false
 	character_confirmed.emit(_selected_char_id)
+
+
+func _on_delete_pressed(char_id: int, char_name: String) -> void:
+	_delete_char_id = char_id
+	_delete_char_name = char_name
+	_delete_label.text = 'Delete "%s"? This can\'t be undone.\nType its name to confirm.' % char_name
+	_delete_name_field.text = ""
+	_delete_dialog.get_ok_button().disabled = true
+	_delete_dialog.popup_centered()
+	_delete_name_field.grab_focus()
+
+
+func _on_delete_confirmed() -> void:
+	var char_id := _delete_char_id
+	_delete_char_id = -1
+	if _delete_name_field.text != _delete_char_name:  # Enter in the field confirms too
+		return
+	# Over the game connection, not the web API: only the game server knows
+	# whether someone is playing this character right now.
+	Network.send(Protocol.pkt_delete_character(_token, char_id))
+
+
+func _on_character_deleted(result: int) -> void:
+	if result == Protocol.DELETE_OK:
+		_http.request(Config.WEBSERVER + "/api/characters?token=" + _token,
+			[], HTTPClient.METHOD_GET)
+	elif result == Protocol.DELETE_IN_GAME:
+		_select_error.text = "That character is in game right now."
+	else:
+		_select_error.text = "Couldn't delete. Log in again and retry."
 
 
 func _on_create_pressed() -> void:

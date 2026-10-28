@@ -1,0 +1,5 @@
+[gd_scene format=3 uid="uid://dcjqmovcg358e"]
+
+[ext_resource type="PackedScene" uid="uid://bd44ynhlmecb4" path="res://assets/meshes/ladder.glb" id="1_0so02"]
+
+[node name="ladder" unique_id=2144578750 instance=ExtResource("1_0so02")]

@@ -53,6 +53,17 @@ func _ready() -> void:
 	interp_slider.value_changed.connect(_on_interp_rate)
 	_row(main_page, "Interpolation Rate", interp_slider)
 
+	_section_label(main_page, "Audio")
+	for bus in Sfx.BUSES:
+		var vol := HSlider.new()
+		vol.min_value = 0.0
+		vol.max_value = 1.0
+		vol.step = 0.05
+		vol.value = Sfx.get_volume(bus)
+		vol.custom_minimum_size = Vector2(100, 0)
+		vol.value_changed.connect(func(v: float) -> void: Sfx.set_volume(bus, v))
+		_row(main_page, bus, vol)
+
 	main_page.add_child(HSeparator.new())
 
 	var controls_btn := Button.new()
@@ -62,27 +73,72 @@ func _ready() -> void:
 	main_page.add_child(controls_btn)
 
 	# ── Controls page ─────────────────────────────────────────────────
+	# Every key the game handles (player_controller.gd, chat_input.gd,
+	# main.gd, ps2.gd, talent_tree_ui.gd) — keep in sync when adding one.
 	var ctrl_page := VBoxContainer.new()
-	ctrl_page.custom_minimum_size = Vector2(240, 0)
+	ctrl_page.custom_minimum_size = Vector2(440, 0)
 	ctrl_page.name = "ControlsPage"
 	ctrl_page.visible = false
 	_panel.add_child(ctrl_page)
 
 	_section_label(ctrl_page, "Controls")
 
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(440, 420)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ctrl_page.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+
 	const BINDINGS := [
-		["Up",        "W"],
-		["Down",      "S"],
-		["Left",      "A"],
-		["Right",     "D"],
-		["Interact",  "E"],
-		["Main Hand", "1"],
-		["Off Hand",  "2"],
-		["Head Gear", "3"],
-		["Drop",      "G"],
+		["Movement", [
+			["W A S D", "Walk forward, left, back, right (relative to where you look)"],
+			["Mouse", "Look around"],
+			["Space", "Jump. While climbing: let go and push off the wall"],
+			["W into a ladder", "Climb it (vines too; any wall or cliff with the Climb talent). On it: W climbs up, S climbs down, A/D move sideways, no key holds on"],
+		]],
+		["Combat", [
+			["Left click", "Attack with what's in your main hand (melee swing, bow shot, throw)"],
+			["1", "Cast Flame at the aimed target"],
+			["2", "Cast Fireball"],
+		]],
+		["Items", [
+			["Hold E", "Open the aimed chest, pick up the aimed item, or use the talent tree crystal"],
+			["G", "Drop what's in your main hand"],
+			["E + 1  /  E + 2", "Swap main hand and off hand"],
+			["E + 3", "Swap main hand and head gear"],
+			["E + 4", "Swap main hand and body armor"],
+			["E + 5", "Swap main hand and pouch"],
+			["E + Tab", "Swap main hand and sheath"],
+			["E + B", "Take your bag in hand, or put the held bag back on"],
+			["B + 1…9", "Swap main hand with that slot of your bag"],
+			["Shift", "Inspect your bag, quiver and pouch (console log for now)"],
+			["Shift + click", "Inspect the aimed floor item (console log for now)"],
+		]],
+		["Talking", [
+			["Enter", "Chat: type, then Enter to send. Talk to an NPC by saying hi and the *highlighted* words"],
+			["Esc (typing)", "Cancel the message"],
+		]],
+		["Talent tree", [
+			["Click", "Learn a talent"],
+			["Drag", "Move around the tree"],
+			["Mouse wheel", "Zoom"],
+		]],
+		["Game", [
+			["Esc", "Log out to character select"],
+			["F12", "Toggle fullscreen"],
+			["F9", "Toggle PS2 render mode"],
+		]],
 	]
-	for b in BINDINGS:
-		_binding_row(ctrl_page, b[0], b[1])
+	for section in BINDINGS:
+		var title := Label.new()
+		title.text = section[0]
+		title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+		list.add_child(title)
+		for b in section[1]:
+			_binding_row(list, b[0], b[1])
+		list.add_child(HSeparator.new())
 
 	ctrl_page.add_child(HSeparator.new())
 
@@ -149,18 +205,21 @@ func _section_label(parent: VBoxContainer, text: String) -> void:
 	parent.add_child(HSeparator.new())
 
 
-func _binding_row(parent: VBoxContainer, action: String, key: String) -> void:
+# One key and what it does; long explanations wrap.
+func _binding_row(parent: VBoxContainer, key: String, what: String) -> void:
 	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
 	parent.add_child(row)
-	var lbl := Label.new()
-	lbl.text = action
-	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(lbl)
 	var key_lbl := Label.new()
 	key_lbl.text = key
-	key_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	key_lbl.custom_minimum_size = Vector2(32, 0)
+	key_lbl.custom_minimum_size = Vector2(130, 0)
+	key_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(key_lbl)
+	var lbl := Label.new()
+	lbl.text = what
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(lbl)
 
 
 func _row(parent: VBoxContainer, label_text: String, control: Control) -> void:

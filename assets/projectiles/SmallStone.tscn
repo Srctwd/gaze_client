@@ -1,6 +1,9 @@
 [gd_scene format=3 uid="uid://cu1becqh1ynap"]
 
 [ext_resource type="PackedScene" uid="uid://mu6aey18dxld" path="res://assets/meshes/rock01.glb" id="1_jopun"]
+[ext_resource type="Script" uid="uid://ba2r0dll7abg" path="res://assets/projectiles/projectile.gd" id="proj_script"]
 
 [node name="rock01" unique_id=446025941 instance=ExtResource("1_jopun")]
+script = ExtResource("proj_script")
+hit_sound = "rock"
 transform = Transform3D(0.085, 0, 0, 0, 0.085, 0, 0, 0, 0.085, 0, 0, 0)

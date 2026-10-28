@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://8g2ihom2jvyl"]
+
+[ext_resource type="PackedScene" uid="uid://gmevprfptcdd" path="res://assets/meshes/cave_rat.glb" id="1_404lt"]
+
+[node name="cave_rat" unique_id=1175913837 instance=ExtResource("1_404lt")]
+transform = Transform3D(2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5, 0, 0, 0)
+
+[node name="Skeleton3D" parent="Armature" parent_id_path=PackedInt32Array(1212836978) index="0" unique_id=417408241]
+bones/0/rotation = Quaternion(-8.557136e-09, 1.7114273e-08, -2.9289833e-16, 1)
+bones/4/rotation = Quaternion(-5.0525752e-15, 5.3290705e-15, -1.7601693e-22, 1)
+bones/5/rotation = Quaternion(0.664873, -0.06792495, -0.4746129, 0.57277644)
+bones/6/rotation = Quaternion(-0.609352, 0.020048324, 0.5266097, 0.5924277)
+bones/7/rotation = Quaternion(0.6648729, 0.06792495, 0.47461295, 0.57277656)
+bones/8/rotation = Quaternion(-0.6093518, -0.020048333, -0.5266097, 0.5924278)
+bones/10/rotation = Quaternion(0.21380076, 0.5317542, 0.76031345, -0.30569622)
+bones/11/rotation = Quaternion(0.76047325, -0.29344568, -0.22367848, 0.5343575)
+bones/12/rotation = Quaternion(-0.21380076, 0.5317542, 0.76031345, 0.30569622)
+bones/13/rotation = Quaternion(0.76047325, 0.29344568, 0.22367848, 0.5343575)
+bones/17/rotation = Quaternion(0.06466303, 1.487003e-08, 1.059911e-08, 0.99790716)
+bones/18/rotation = Quaternion(0.05263044, 4.402007e-08, 1.1731077e-08, 0.9986141)
+bones/19/rotation = Quaternion(0.03546576, -8.9947555e-08, 6.2764554e-09, 0.99937093)
+bones/20/rotation = Quaternion(0.078434065, 8.643355e-09, 7.501287e-09, 0.9969194)
+bones/21/rotation = Quaternion(-0.005767762, 6.7054124e-08, -9.883804e-10, 0.9999834)
+bones/22/rotation = Quaternion(0.056691, -8.575111e-08, 8.647051e-09, 0.99839187)
+
+[node name="BoneAttachment3D" type="BoneAttachment3D" parent="Armature/Skeleton3D" index="6" unique_id=663369541]
+transform = Transform3D(0.9837992, -0.011807084, 0.17888325, 0.01848334, 0.99919116, -0.035702348, -0.17831701, 0.038430393, 0.98322207, -0.40565276, 1.9058815, 0.7391694)
+bone_name = "hand.r"
+bone_idx = 8
+
+[node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=2006237586]

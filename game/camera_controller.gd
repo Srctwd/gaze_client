@@ -23,7 +23,7 @@ const PITCH_FP_MAX:      float =  1.5
 # feet, so on a sloping cave wall or under a low ceiling the head bone — and
 # the camera on it — can end up inside rock, and the near plane cuts it away.
 const COLLISION_LAYER_WORLD := 2      # matches WorldData.COLLISION_LAYER_WORLD
-const BODY_RADIUS:       float = 0.4  # server player sphere (keep in sync with _GROUND_RADIUS)
+const BODY_RADIUS:       float = 0.4  # server player sphere (keep in sync with stone_gaze models.json "Player")
 const EYE_MARGIN:        float = 0.15 # kept between the eye and rock; > the near plane's half-size
 
 func _ready() -> void:
