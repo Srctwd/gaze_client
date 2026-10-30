@@ -3,7 +3,6 @@ extends Node
 @onready var _camera:         CameraController = $"../Camera3D"
 @onready var _targeting                       = $"../Targeting"
 @onready var _entity_manager: Node             = $"../EntityManager"
-@onready var _terrain:        Node3D           = $"../Terrain"
 
 var floor_items:      Node = null
 var talent_tree_ui:   Node = null
@@ -16,7 +15,6 @@ const _YAW_THRESHOLD  := 0.033
 const _PICKUP_HOLD    := 0.15
 const _INTERACT_RANGE := 3.0
 const _PICKUP_RANGE   := 3.0
-const OBJ_TYPE_FROZENSTARLIGHT := 2
 
 const _BAG_DIGIT_KEYS := {
 	KEY_1: 0, KEY_2: 1, KEY_3: 2, KEY_4: 3, KEY_5: 4,
@@ -90,15 +88,24 @@ func _is_item_in_pickup_range(item_id: int) -> bool:
 	return player_pos.distance_to(item_node.position) <= _PICKUP_RANGE
 
 func _try_interact_frozenstarlight() -> void:
-	if _terrain == null or not _entity_manager.entities.has(GameState.player_net_id):
+	if not _entity_manager.entities.has(GameState.player_net_id):
 		return
 	var player_pos: Vector3 = (_entity_manager.entities[GameState.player_net_id] as StaticBody3D).position
-	var obj: Variant = _terrain.nearest_static_object(player_pos, OBJ_TYPE_FROZENSTARLIGHT, _INTERACT_RANGE)
-	if obj == null:
+	var best_id := -1
+	var best_dist := _INTERACT_RANGE
+	for net_id: int in _entity_manager.starlights:
+		var body := _entity_manager.entities.get(net_id) as Node3D
+		if body == null:
+			continue
+		var d := Vector2(player_pos.x - body.position.x, player_pos.z - body.position.z).length()
+		if d <= best_dist:
+			best_dist = d
+			best_id = net_id
+	if best_id == -1:
 		return
 	if talent_tree_ui != null:
 		talent_tree_ui.expect_open()
-	Network.send(Protocol.pkt_interact(OBJ_TYPE_FROZENSTARLIGHT, obj.x, obj.z))
+	Network.send(Protocol.pkt_interact_entity(best_id))
 
 func _get_intent() -> Vector2:
 	var x := float(int(Input.is_key_pressed(KEY_D)) - int(Input.is_key_pressed(KEY_A)))

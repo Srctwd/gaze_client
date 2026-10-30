@@ -23,8 +23,12 @@ const PITCH_FP_MAX:      float =  1.5
 # feet, so on a sloping cave wall or under a low ceiling the head bone — and
 # the camera on it — can end up inside rock, and the near plane cuts it away.
 const COLLISION_LAYER_WORLD := 2      # matches WorldData.COLLISION_LAYER_WORLD
-const BODY_RADIUS:       float = 0.4  # server player sphere (keep in sync with stone_gaze models.json "Player")
+const EYE_FRACTION:      float = 0.93 # fallback eye height, as a share of the body's full height
 const EYE_MARGIN:        float = 0.15 # kept between the eye and rock; > the near plane's half-size
+# The local player's server body (entity_manager.player_body_changed): a sphere
+# of body_radius at the feet, reaching body_height above its centre.
+var body_radius := 0.5
+var body_height := 1.0
 
 func _ready() -> void:
 	_hud = load("res://ui/hud.gd").new()
@@ -62,6 +66,10 @@ func follow(pos: Vector3) -> void:
 # Called with the local player's Head Marker3D world position (tracks the
 # actual head bone, including animation bob) whenever the model provides one
 # — falls back to a fixed eye-height offset from `target` otherwise.
+func set_body(radius: float, height: float) -> void:
+	body_radius = radius
+	body_height = height
+
 func follow_head(pos: Vector3) -> void:
 	head_target = pos
 	_has_head = true
@@ -71,7 +79,7 @@ func follow_head(pos: Vector3) -> void:
 func _apply() -> void:
 	if first_person:
 		var look := Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch))
-		position = _clear_eye(head_target if _has_head else target + Vector3(0, 1.7, 0), look)
+		position = _clear_eye(head_target if _has_head else target + Vector3(0, (body_radius + body_height) * EYE_FRACTION, 0), look)
 		look_at(position + look, Vector3.UP)
 	else:
 		position = target + Vector3(sin(yaw), -sin(pitch), cos(yaw)) * cos(pitch) * distance
@@ -89,7 +97,7 @@ func _clear_eye(eye: Vector3, look: Vector3) -> Vector3:
 	if not is_inside_tree():
 		return eye
 	var space := get_world_3d().direct_space_state
-	var from := target + Vector3(0, BODY_RADIUS, 0)
+	var from := target + Vector3(0, body_radius, 0)
 	var axis := Vector3(target.x, maxf(eye.y, from.y), target.z)
 	var hit := _world_ray(space, from, axis + Vector3.UP * EYE_MARGIN)
 	if not hit.is_empty():

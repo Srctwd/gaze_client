@@ -11,6 +11,7 @@ signal action_ok(actor_id: int, effect: int, target_id: int, action_type: int)
 signal action_windup(actor_id: int, action_type: int, windup: float)
 signal unit_hit(target_id: int, attacker_id: int, count: int, absorbed: int, armored: int, defended: int)
 signal unit_destroyed(net_id: int)
+signal unit_resized(net_id: int, radius: float, height: float)
 signal vital_update(net_id: int, hp: float, max_hp: float, mana: float, max_mana: float)
 signal floor_item_spawned(net_id: int, def_id: int, quantity: int, pos: Vector3, contents: Array)
 signal floor_item_destroyed(net_id: int)
@@ -58,7 +59,12 @@ func _process(_delta: float) -> void:
 					_reconnect_on_disconnect = false
 					_peer = _host.connect_to_host(HOST, PORT, CHANNELS, 0)
 			ENetConnection.EVENT_RECEIVE:
-				_parse((result[1] as ENetPacketPeer).get_packet())
+				var packet := (result[1] as ENetPacketPeer).get_packet()
+				# A logged-out session keeps streaming UnitPos until the server
+				# sees the disconnect; the reloaded scene would build those units
+				# without their SpawnUnit (wrong body size, so sunk into the ground).
+				if not _reconnect_on_disconnect:
+					_parse(packet)
 
 # Drops the session: the server despawns the player on peer disconnect (see
 # sessions_disconnect in stone_gaze), then this reconnects so `connected`
@@ -81,15 +87,18 @@ func _parse(data: PackedByteArray) -> void:
 	if data.is_empty():
 		return
 	match data[0]:
-		0x01: # SpawnUnit: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) anim_state(u8) radius(f32) height(f32)
-			unit_spawned.emit(data.decode_u32(1), data[5], data[6],
-				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)), data[19],
-				data.decode_float(20), data.decode_float(24))
-		0x02: # UnitPos: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) orient(u8) anim_state(u8)
-			var orient := Protocol.unpack_orient(data[19])
-			unit_pos.emit(data.decode_u32(1), data[5], data[6],
-				Vector3(data.decode_float(7), data.decode_float(11), data.decode_float(15)),
-				orient.x, orient.y, data[20])
+		0x01: # SpawnUnit: one SpawnUnitBatch record (servers before batching)
+			_emit_unit_spawned(data, 1)
+		0x02: # UnitPos: one UnitPosBatch record (servers before batching)
+			_emit_unit_pos(data, 1)
+		0x27: # SpawnUnitBatch: count(u8) [27-byte SpawnUnit record]×count
+			for i in data[1]:
+				_emit_unit_spawned(data, 2 + i * 27)
+		0x28: # UnitPosBatch: count(u8) [20-byte UnitPos record]×count
+			for i in data[1]:
+				_emit_unit_pos(data, 2 + i * 20)
+		0x29: # UnitSize: net_id(u32) radius(f32) height(f32) — a live unit's new body (Wild Growth)
+			unit_resized.emit(data.decode_u32(1), data.decode_float(5), data.decode_float(9))
 		0x04: # TimeOfDay: game_seconds(f32)
 			time_of_day.emit(data.decode_float(1))
 		0x06: # LoginResponse: status(u8) [net_id(u32)]
@@ -176,6 +185,19 @@ func _parse(data: PackedByteArray) -> void:
 			action_windup.emit(data.decode_u32(1), data[5], data.decode_float(6))
 		0x26: # DeleteCharacterResponse: result(u8) — requesting peer only
 			character_deleted.emit(data[1])
+
+# SpawnUnit record at `o`: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) anim_state(u8) radius(f32) height(f32)
+func _emit_unit_spawned(data: PackedByteArray, o: int) -> void:
+	unit_spawned.emit(data.decode_u32(o), data[o + 4], data[o + 5],
+		Vector3(data.decode_float(o + 6), data.decode_float(o + 10), data.decode_float(o + 14)), data[o + 18],
+		data.decode_float(o + 19), data.decode_float(o + 23))
+
+# UnitPos record at `o`: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) orient(u8) anim_state(u8)
+func _emit_unit_pos(data: PackedByteArray, o: int) -> void:
+	var orient := Protocol.unpack_orient(data[o + 18])
+	unit_pos.emit(data.decode_u32(o), data[o + 4], data[o + 5],
+		Vector3(data.decode_float(o + 6), data.decode_float(o + 10), data.decode_float(o + 14)),
+		orient.x, orient.y, data[o + 19])
 
 func is_connected_to_server() -> bool:
 	return _peer != null and _peer.get_state() == ENetPacketPeer.STATE_CONNECTED

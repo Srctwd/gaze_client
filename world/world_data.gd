@@ -33,7 +33,6 @@ const _PROP_STRETCH     := 0.30
 const _PROP_CELL_JITTER := 0.35
 var _material      : Material
 var _mat_cave      : ShaderMaterial
-var _mat_cave_floor: ShaderMaterial
 var _fallback_scene        : PackedScene = null
 var _biome_mat_cache : Dictionary = {}  # biome id -> Material, shared by every streamed chunk
 var _prop_cache      : Dictionary = {}  # prop path -> PackedScene
@@ -244,8 +243,7 @@ func load(path: String) -> bool:
 	_stitch_all_borders("h3")
 
 	_material      = WorldShaders.surface_mat(Color(0.35, 0.52, 0.28))
-	_mat_cave       = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))
-	_mat_cave_floor = WorldShaders.cave_mat(Color(0.27, 0.23, 0.18))
+	_mat_cave = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))   # ceiling (h2) and floor (h3) alike
 	_fallback_scene = load(_FALLBACK_PATH)
 	_load_wall_types()
 	_load_object_types()
@@ -343,8 +341,8 @@ func _instantiate_static_type(id: int) -> Node3D:
 # the pure-data mesh/collider work and is safe to run on a worker thread;
 # make_chunk_node() turns its result into nodes on the main thread. Only the
 # non-terrain content below (static objects, walls, water, placed props) is
-# spawned up front — it's small, and gameplay code (is_in_water,
-# nearest_static_object) reads it world-wide anyway.
+# spawned up front — it's small, and gameplay code (is_in_water) reads it
+# world-wide anyway.
 func chunk_coords_at(wx: float, wz: float) -> Vector2i:
 	var size := chunk_cells * cell_size
 	return Vector2i(floori((wx - world_ox) / size), floori((wz - world_oz) / size))
@@ -422,7 +420,7 @@ func make_chunk_node(i: int, arrays: Dictionary) -> Node3D:
 		var ceil_mi := _make_chunk(arrays.h2, origin, _mat_cave)
 		ceil_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 		node.add_child(_with_collision(ceil_mi))
-		node.add_child(_with_collision(_make_chunk(arrays.h3, origin, _mat_cave_floor)))
+		node.add_child(_with_collision(_make_chunk(arrays.h3, origin, _mat_cave)))
 
 	# Seeded per chunk so a chunk scatters the same props every time it
 	# streams back in, instead of reshuffling whenever the player returns.
@@ -434,7 +432,7 @@ func make_chunk_node(i: int, arrays: Dictionary) -> Node3D:
 
 func spawn_static(parent: Node3D) -> void:
 	for obj in _static_objects:
-		var wy   := _get_height_at(obj.x, obj.z)
+		var wy   := _rest_height(obj.x, obj.z)
 		var id   := obj.type as int
 		var node := _instantiate_static_type(id)
 		var scale_ratio := 1.0
@@ -928,6 +926,27 @@ static func _node_aabb(node: Node, xform: Transform3D) -> AABB:
 # Base sits at ground_y + y_offset (lets a wall float, e.g. act as a
 # ceiling) — mirrors the server's top_y = terrain + y_offset + height
 # (world.h/world.cpp).
+# Where a static object at (x, z) stands: the terrain, or a wall box's top
+# over it within _REST_REACH of the ground (a table, a plinth) — world.bin
+# objects carry no y. Higher tops (roofs, upper floors) don't count.
+const _REST_REACH := 1.5
+
+func _rest_height(x: float, z: float) -> float:
+	var y := _get_height_at(x, z)
+	if is_nan(y): y = 0.0
+	var reach := y + _REST_REACH
+	for wb in _static_boxes:
+		var local := Vector2(x - (wb.x as float), z - (wb.z as float)).rotated(wb.rot_y as float)
+		if absf(local.x) > (wb.half_x as float) or absf(local.y) > (wb.half_z as float):
+			continue
+		var base := _get_height_at(wb.x as float, wb.z as float)
+		if is_nan(base): base = 0.0
+		var top := base + (wb.get("y_offset", 0.0) as float) + (wb.height as float)
+		if top <= reach:
+			y = maxf(y, top)
+	return y
+
+
 static func _wall_transform(box: Dictionary, ground_y: float) -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, box.rot_y as float),
 		Vector3(box.x as float, ground_y + (box.get("y_offset", 0.0) as float), box.z as float))

@@ -2,6 +2,7 @@ extends Node
 
 signal player_moved(pos: Vector3)
 signal player_head_moved(pos: Vector3)
+signal player_body_changed(radius: float, height: float)
 
 var entities:  Dictionary = {}  # net_id (int) -> StaticBody3D
 var _xp_orbs:  Array     = []  # {node: GPUParticles3D, target_id: int}
@@ -86,6 +87,10 @@ var opened_chests: Dictionary = {}  # net_id -> true, chests the server said we'
 var _chest_anims:  Dictionary = {}  # net_id -> AnimationPlayer (Closed/Open clips)
 const _CHEST_SCALE := 0.5
 
+# FrozenStarlights are units only so E can name them by net id (InteractEntity);
+# the crystal itself, and its collision, come from world.bin's static object.
+var starlights: Dictionary = {}  # net_id -> true, every FrozenStarlight unit currently known
+
 var _mesh_by_type:  Dictionary = {}  # unit_type (int) -> PackedScene
 var _slime_scenes: Array     = []  # index by (variant >> 6) & 0x3
 
@@ -95,7 +100,7 @@ var _slime_scenes: Array     = []  # index by (variant >> 6) & 0x3
 # together) so text wrapped in a pair of '*' (npcs.json's convention for
 # keywords, e.g. "Would you like to *Trade*?") can just be colored inline via
 # BBCode instead of manually laying out separate labels side by side.
-const _NPC_SPEECH_HEIGHT     := 1.4  # body.position is ground/feet level (see _body_dims)
+const _NPC_SPEECH_HEIGHT     := 0.93  # share of the body's full height (_body_dims), up from body.position at the feet
 const _NPC_SPEECH_JITTER     := 0.3  # random x/y offset so replies don't always land in the same spot
 const _NPC_SPEECH_HIDE_DELAY := 6.0
 const _NPC_SPEECH_COLOR      := Color.YELLOW
@@ -124,6 +129,9 @@ var _npc_timers:  Dictionary = {}  # net_id (int) -> Timer
 # position.y + height. Zero for units with no body (chests — y is the floor).
 var _body_dims: Dictionary = {}  # net_id (int) -> Vector2(radius, height)
 const _DEFAULT_BODY := Vector2(0.5, 1.0)  # ModelDef defaults, until SpawnUnit says otherwise
+var _body_cols:  Dictionary = {}  # net_id -> CollisionShape3D sized to _body_dims
+var _fit_models: Dictionary = {}  # net_id -> model root scaled to its body's height (players)
+static var _model_tops: Dictionary = {}  # scene path -> _model_top()
 
 # 4 hues per unit type, indexed by headgear bits (variant >> 6) & 0x3
 const _VARIANT_PALETTES := {
@@ -169,6 +177,7 @@ func _ready() -> void:
 	Network.unit_spawned.connect(_on_unit_spawned)
 	Network.unit_pos.connect(_on_unit_pos)
 	Network.unit_destroyed.connect(_on_unit_destroyed)
+	Network.unit_resized.connect(set_body_size)
 	Network.xp_gained.connect(_on_xp_gained)
 	Network.level_up.connect(_on_level_up)
 	Network.action_ok.connect(_on_action_ok)
@@ -187,6 +196,8 @@ func _on_unit_destroyed(net_id: int) -> void:
 		entities[net_id].queue_free()
 		entities.erase(net_id)
 		_body_dims.erase(net_id)
+		_body_cols.erase(net_id)
+		_fit_models.erase(net_id)
 		_targets.erase(net_id)
 		_anim_players.erase(net_id)
 		_current_anim.erase(net_id)
@@ -201,6 +212,7 @@ func _on_unit_destroyed(net_id: int) -> void:
 		_npc_timers.erase(net_id)
 		chests.erase(net_id)
 		_chest_anims.erase(net_id)
+		starlights.erase(net_id)
 
 func _on_npc_speech(npc_net_id: int, _target_player_net_id: int, text: String) -> void:
 	if not entities.has(npc_net_id):
@@ -230,8 +242,9 @@ func _on_npc_speech(npc_net_id: int, _target_player_net_id: int, text: String) -
 		label.add_child(timer)
 		_npc_timers[npc_net_id] = timer
 
+	var dims: Vector2 = _body_dims.get(npc_net_id, _DEFAULT_BODY)
 	_npc_offsets[npc_net_id] = Vector3(randf_range(-_NPC_SPEECH_JITTER, _NPC_SPEECH_JITTER),
-		_NPC_SPEECH_HEIGHT + randf_range(-_NPC_SPEECH_JITTER, _NPC_SPEECH_JITTER), 0.0)
+		(dims.x + dims.y) * _NPC_SPEECH_HEIGHT + randf_range(-_NPC_SPEECH_JITTER, _NPC_SPEECH_JITTER), 0.0)
 	label.text = Protocol.text_to_bbcode(text, _NPC_HIGHLIGHT_COLOR)
 	label.reset_size()
 	_npc_active[npc_net_id] = true
@@ -356,7 +369,8 @@ func set_first_person(fp: bool) -> void:
 			(mi as MeshInstance3D).visible = not fp
 
 func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _anim_state: int, radius: float, height: float) -> void:
-	if entities.has(net_id):
+	if entities.has(net_id):   # built from an earlier UnitPos, at the default size
+		set_body_size(net_id, radius, height)
 		return
 	_body_dims[net_id] = Vector2(radius, height)
 	var body := _make_body(net_id, unit_type, variant)
@@ -366,6 +380,9 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _
 	entities[net_id] = body
 	if unit_type == Protocol.UNIT_CHEST:
 		_setup_chest(net_id, body)
+		return
+	if unit_type == Protocol.UNIT_FROZEN_STARLIGHT:
+		starlights[net_id] = true
 		return
 	_apply_variant(body, unit_type, variant)
 	_cache_anim_player(net_id, body)
@@ -399,6 +416,8 @@ func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y
 		entities[net_id] = body
 		if unit_type == Protocol.UNIT_CHEST:
 			_setup_chest(net_id, body)
+		elif unit_type == Protocol.UNIT_FROZEN_STARLIGHT:
+			starlights[net_id] = true
 		else:
 			_apply_variant(body, unit_type, variant)
 			_cache_anim_player(net_id, body)
@@ -424,6 +443,9 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 		_player_head_offset_valid = false
 	else:
 		body = StaticBody3D.new()
+		if unit_type == Protocol.UNIT_FROZEN_STARLIGHT:
+			body.set_meta("net_id", net_id)
+			return body
 		var scene: PackedScene
 		if unit_type == Protocol.UNIT_SLIME:
 			scene = _slime_scenes[(variant >> 6) & 0x3]
@@ -446,21 +468,63 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 			body.add_child(box_col)
 			body.set_meta("net_id", net_id)
 			return body
-		# The server's body (see _body_dims): feet to position.y + height.
-		var dims: Vector2 = _body_dims.get(net_id, _DEFAULT_BODY)
-		var shape := CylinderShape3D.new()
+		if unit_type == Protocol.UNIT_PLAYER or unit_type == Protocol.UNIT_NPC:
+			_fit_models[net_id] = mesh_node
+	if net_id == GameState.player_net_id:
+		_fit_models[net_id] = body.get_node("Mesh")
+	# The server's body (see _body_dims), sized by _apply_body_size.
+	var col := CollisionShape3D.new()
+	col.shape = CylinderShape3D.new()
+	body.add_child(col)
+	_body_cols[net_id] = col
+	body.set_meta("net_id", net_id)
+	_apply_body_size(net_id)
+	return body
+
+# SpawnUnit's size, or a later UnitSize (Wild Growth) for a unit already here.
+func set_body_size(net_id: int, radius: float, height: float) -> void:
+	_body_dims[net_id] = Vector2(radius, height)
+	_apply_body_size(net_id)
+
+func _apply_body_size(net_id: int) -> void:
+	var dims: Vector2 = _body_dims.get(net_id, _DEFAULT_BODY)
+	var col := _body_cols.get(net_id) as CollisionShape3D
+	if col != null:
+		var shape := col.shape as CylinderShape3D
 		shape.radius = dims.x
 		shape.height = dims.x + dims.y
-		var col := CollisionShape3D.new()
-		col.shape = shape
 		# body.position is ground/feet level (see the XP-orb +Vector3(0,1.2,0)
 		# offset elsewhere in this file); a CylinderShape3D is centered on its
 		# own origin, so without this lift half the collider sits buried
 		# underground. Mirrors world_data.gd's _with_cylinder_collision.
 		col.position.y = shape.height * 0.5
-		body.add_child(col)
-	body.set_meta("net_id", net_id)
-	return body
+	var model := _fit_models.get(net_id) as Node3D
+	if model != null:
+		var top := _model_top(model)
+		if top > 0.0:
+			model.scale = Vector3.ONE * (dims.x + dims.y) / top
+	if net_id == GameState.player_net_id:
+		_player_head_offset_valid = false
+		player_body_changed.emit(dims.x, dims.y)
+
+# Height of a model's mesh above its origin at scale 1, in its rest pose —
+# measured once per scene, before anything (equipment) is attached to it.
+func _model_top(model: Node3D) -> float:
+	var key := model.scene_file_path
+	if _model_tops.has(key):
+		return _model_tops[key]
+	var top := 0.0
+	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		var xf := mi.transform
+		var p := mi.get_parent()
+		while p != model:
+			if p is Node3D:
+				xf = (p as Node3D).transform * xf
+			p = p.get_parent()
+		top = maxf(top, (xf * mi.get_aabb()).end.y)
+	if not key.is_empty():
+		_model_tops[key] = top
+	return top
 
 func _setup_chest(net_id: int, body: Node3D) -> void:
 	chests[net_id] = true

@@ -40,8 +40,8 @@ const TRIM := { "magic_cast": -4.0, "step_stone": -11.0, "step_grass": -9.0,
 # Footstep pitch/volume by body size: rats patter, big monsters stomp.
 const _SMALL_UNITS := [Protocol.UNIT_RAT, Protocol.UNIT_CAVE_RAT, Protocol.UNIT_SNAKE, Protocol.UNIT_SLIME]
 const _BIG_UNITS   := [Protocol.UNIT_MINOTAUR, Protocol.UNIT_DEMON]
-const _SILENT_UNITS := [Protocol.UNIT_CHEST]
-const _NOT_MONSTERS := [Protocol.UNIT_PLAYER, Protocol.UNIT_NPC, Protocol.UNIT_CHEST]
+const _SILENT_UNITS := [Protocol.UNIT_CHEST, Protocol.UNIT_FROZEN_STARLIGHT]
+const _NOT_MONSTERS := [Protocol.UNIT_PLAYER, Protocol.UNIT_NPC, Protocol.UNIT_CHEST, Protocol.UNIT_FROZEN_STARLIGHT]
 
 var terrain: Node = null  # world/terrain.gd, set by main.gd — footstep surfaces
 

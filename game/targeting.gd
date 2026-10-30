@@ -45,7 +45,8 @@ func _pick_unit() -> int:
 	var best_score    := INF
 	var current_score := INF
 	for net_id in _entity_manager.entities:
-		if net_id == GameState.player_net_id or _entity_manager.chests.has(net_id):
+		if net_id == GameState.player_net_id or _entity_manager.chests.has(net_id) \
+				or _entity_manager.starlights.has(net_id):
 			continue
 		var body  := _entity_manager.entities[net_id] as StaticBody3D
 		var score := _score_candidate(body.position, player_pos, screen_center)

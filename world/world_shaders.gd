@@ -23,7 +23,6 @@ void fragment() {
 """
 	var m := ShaderMaterial.new()
 	m.shader = sh
-	m.render_priority = 1
 	return m
 
 

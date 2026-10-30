@@ -20,7 +20,6 @@ const EQUIP_SYNC         := 0x10
 const XP_GAIN            := 0x11
 const LEVEL_UP           := 0x12
 const SLOT_SWAP_REQUEST  := 0x13
-const INTERACT_REQUEST   := 0x14
 const TALENT_SYNC        := 0x15
 const LEARN_TALENT_REQUEST := 0x16
 const FREE_AIM_SHOT        := 0x17
@@ -82,6 +81,7 @@ const UNIT_RAT       := 0x09
 const UNIT_VALKYRIE  := 0x0A  # models.json "Valkyrie" on the server
 const UNIT_CHEST     := 0x0B  # models.json "Chest" — a placed chest, never moves
 const UNIT_CAVE_RAT  := 0x0C  # models.json "CaveRat"
+const UNIT_FROZEN_STARLIGHT := 0x0D  # models.json "FrozenStarlight" — interaction only; world.bin's static object is what's drawn
 
 # ── Locomotion animation state (AnimState enum, network/protocol.h) ────────
 # Carried on SpawnUnit/UnitPos. Ground has no separate idle/walk/run signal —
@@ -260,15 +260,6 @@ static func pkt_pickup(net_id: int) -> PackedByteArray:
 	pkt.resize(5)
 	pkt[0] = PICKUP_REQUEST
 	pkt.encode_u32(1, net_id)
-	return pkt
-
-static func pkt_interact(obj_type: int, x: float, z: float) -> PackedByteArray:
-	var pkt := PackedByteArray()
-	pkt.resize(10)
-	pkt[0] = INTERACT_REQUEST
-	pkt[1] = obj_type
-	pkt.encode_float(2, x)
-	pkt.encode_float(6, z)
 	return pkt
 
 static func pkt_interact_entity(net_id: int) -> PackedByteArray:
