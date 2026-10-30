@@ -56,6 +56,13 @@ hit_sound = "fire"
 [node name="HandGrip" type="Marker3D" parent="." unique_id=2109476962]
 transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.4868996e-14, 0, 2.4868996e-14, 0.99999976, 0, 1.9853529, 3.1391068e-09)
 
+[node name="OmniLight3D" type="OmniLight3D" parent="HandGrip" unique_id=1600674039]
+transform = Transform3D(6.896553, 0, 0, 0, 6.896553, 2.842171e-13, 0, -2.842171e-13, 6.896553, 0, 0, 0)
+light_color = Color(1, 0.72, 0.48, 1)
+omni_range = 30.0
+omni_attenuation = 0.25
+omni_shadow_mode = 0
+
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." unique_id=1448723297]
 transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.842171e-14, 0, 2.842171e-14, 0.99999976, 0, 5.588713, -1.0250119e-08)
 material_override = SubResource("StandardMaterial3D_tyv0i")
@@ -64,10 +71,3 @@ lifetime = 0.5
 fixed_fps = 60
 process_material = SubResource("ParticleProcessMaterial_nu0uf")
 draw_pass_1 = SubResource("QuadMesh_6yvt0")
-
-[node name="OmniLight3D" type="OmniLight3D" parent="." unique_id=1600674039]
-transform = Transform3D(3.333333, 0, 0, 0, 3.333333, 0, 0, 0, 3.333333, 0, 5.622071, 0.49999997)
-light_color = Color(1, 0.72, 0.48, 1)
-omni_range = 30.0
-omni_attenuation = 0.25
-omni_shadow_mode = 0

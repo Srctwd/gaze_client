@@ -33,6 +33,7 @@ var body_height := 1.0
 func _ready() -> void:
 	_hud = load("res://ui/hud.gd").new()
 	add_child(_hud)
+	add_child(load("res://game/viewmodel.gd").new())
 
 	GameState.first_person = first_person
 

@@ -1,5 +1,7 @@
 extends Node
 
+const Viewmodel := preload("res://game/viewmodel.gd")
+
 const _HAND_POS := Vector3(0.45, 0.9, 0.1)
 const _HAND_ROT := Vector3(0, 0, 90)
 const _OFFHAND_POS := Vector3(-0.45, 0.9, 0.1)
@@ -16,6 +18,7 @@ var _mainhand_quantity: Dictionary = {}  # net_id -> stack count (1 if not stack
 
 func _ready() -> void:
 	Network.equip_synced.connect(_on_equip_synced)
+	GameState.first_person_changed.connect(func(_fp: bool) -> void: _update_viewmodel.call_deferred())
 
 func get_mainhand_item(net_id: int) -> int:
 	return _mainhand.get(net_id, -1)
@@ -44,8 +47,12 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int) -
 	match slot:
 		Protocol.SLOT_MAINHAND:
 			_set_hand_node(_get_or_create_hand(body), prefab)
+			if net_id == GameState.player_net_id:
+				_update_viewmodel()
 		Protocol.SLOT_OFFHAND:
 			_set_hand_node(_get_or_create_offhand(body), prefab)
+			if net_id == GameState.player_net_id:
+				_update_viewmodel()
 		Protocol.SLOT_HEADGEAR:
 			var helmet := _set_hand_node(_get_or_create_head(body), prefab)
 			# The first-person camera sits on this same Head marker, i.e. inside
@@ -66,6 +73,20 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int) -
 			_set_hand_node(_get_or_create_back(body), prefab)
 		Protocol.SLOT_POUCH:
 			_set_hand_node(_get_or_create_hip(body), prefab)
+
+# Our own MainHand/OffHand items: drawn by the viewmodel overlay in first
+# person (over walls they poke into), by the main camera in third. Shown in
+# first person, after entity_manager.set_first_person hid the whole body.
+func _update_viewmodel() -> void:
+	var body := _entity_manager.entities.get(GameState.player_net_id) as StaticBody3D
+	if body == null:
+		return
+	var fp := GameState.first_person
+	for hand: Node3D in [_get_or_create_hand(body), _get_or_create_offhand(body)]:
+		for gi in hand.find_children("*", "GeometryInstance3D", true, false):
+			(gi as GeometryInstance3D).layers = Viewmodel.LAYER if fp else 1
+			if fp:
+				(gi as GeometryInstance3D).visible = true
 
 # No prefab (res://assets/items/<Name>.tscn missing) means the item def has
 # no client-side representation yet — render nothing rather than guess.
