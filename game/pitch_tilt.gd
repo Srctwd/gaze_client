@@ -24,14 +24,19 @@ var _bone_indices: Dictionary = {}  # bone name -> index in the skeleton
 
 static func has_spine(skeleton: Skeleton3D) -> bool:
 	for bone_name: String in _BONE_SHARES:
-		if skeleton.find_bone(bone_name) == -1:
+		if _find_bone(skeleton, bone_name) == -1:
 			return false
 	return true
+
+# Rigs differ in case (ManlyMan "chest", Human "Chest").
+static func _find_bone(skeleton: Skeleton3D, bone_name: String) -> int:
+	var i := skeleton.find_bone(bone_name)
+	return i if i != -1 else skeleton.find_bone(bone_name.capitalize())
 
 func _ready() -> void:
 	var skeleton := get_skeleton()
 	for bone_name: String in _BONE_SHARES:
-		_bone_indices[bone_name] = skeleton.find_bone(bone_name)
+		_bone_indices[bone_name] = _find_bone(skeleton, bone_name)
 
 func _process_modification_with_delta(delta: float) -> void:
 	var skeleton := get_skeleton()

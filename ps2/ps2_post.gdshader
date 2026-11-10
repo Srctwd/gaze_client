@@ -30,7 +30,10 @@ void fragment() {
 	if (dither) {
 		ivec2 p = ivec2(floor(FRAGCOORD.xy * scale)) & ivec2(3);
 		float d = DIMX[p.x][p.y];
-		c = floor(clamp(c * 255.0 + d, 0.0, 255.0) / 8.0) * 8.0 / 255.0;
+		// The GS truncates, which darkens everything by ~half a 5-bit step
+		// (DIMX averages -0.5, floor loses 3.5 more); +4 makes it round, so
+		// the dither keeps the image's average brightness.
+		c = floor(clamp(c * 255.0 + d + 4.0, 0.0, 255.0) / 8.0) * 8.0 / 255.0;
 	}
 	COLOR = vec4(c, 1.0);
 }

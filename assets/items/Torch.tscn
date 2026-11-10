@@ -1,17 +1,17 @@
 [gd_scene format=3 uid="uid://sj1gy453ldhy"]
 
-[ext_resource type="PackedScene" uid="uid://qf1w0atbtlhj" path="res://assets/meshes/torch01.glb" id="1_g8p30"]
-[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="1_iahd2"]
-[ext_resource type="Texture2D" uid="uid://b5bwnp2l3mgvl" path="res://assets/particles/flame_particle_pixel01.png" id="3_iahd2"]
+[ext_resource type="PackedScene" path="res://assets/meshes/torch01.glb" id="1_g8p30"]
+[ext_resource type="Script" path="res://assets/items/item_prefab.gd" id="1_iahd2"]
+[ext_resource type="Shader" path="res://ps2/ps2_particle.gdshader" id="3_tyv0i"]
+[ext_resource type="Texture2D" path="res://assets/particles/flame_particle_pixel01.ps2.res" id="4_nu0uf"]
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tyv0i"]
-transparency = 1
-shading_mode = 0
-vertex_color_use_as_albedo = true
-albedo_color = Color(1, 0.1764706, 0, 1)
-albedo_texture = ExtResource("3_iahd2")
-billboard_mode = 1
-billboard_keep_scale = true
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_6yvt0"]
+render_priority = 0
+shader = ExtResource("3_tyv0i")
+shader_parameter/albedo_tex = ExtResource("4_nu0uf")
+shader_parameter/albedo_color = Vector4(1, 0.1764706, 0, 1)
+shader_parameter/use_vertex_colors = true
+shader_parameter/lit = false
 
 [sub_resource type="Curve" id="Curve_iahd2"]
 _data = [Vector2(1, 0.8651686), 0.0, 0.0, 0, 0]
@@ -21,14 +21,13 @@ point_count = 1
 curve = SubResource("Curve_iahd2")
 
 [sub_resource type="Gradient" id="Gradient_iahd2"]
-offsets = PackedFloat32Array(0, 0.8196721)
-colors = PackedColorArray(0.27450982, 0.27450982, 0.27450982, 1, 0, 0, 0, 1)
+colors = PackedColorArray(0.27450982, 0.27450982, 0.27450982, 0.27450982, 0, 0, 0, 0)
 
 [sub_resource type="GradientTexture1D" id="GradientTexture1D_tyv0i"]
 gradient = SubResource("Gradient_iahd2")
 
 [sub_resource type="Curve" id="Curve_tyv0i"]
-_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.8539326), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.34831464), 0.0, 0.0, 0, 0]
 point_count = 2
 
 [sub_resource type="CurveTexture" id="CurveTexture_nu0uf"]
@@ -36,7 +35,7 @@ curve = SubResource("Curve_tyv0i")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_nu0uf"]
 emission_shape = 1
-emission_sphere_radius = 0.3
+emission_sphere_radius = 0.35
 gravity = Vector3(0, 3, 0)
 scale_min = 0.5
 scale_max = 0.7
@@ -54,7 +53,7 @@ hit_sound = "fire"
 [node name="torch01" parent="." unique_id=1152962316 instance=ExtResource("1_g8p30")]
 
 [node name="HandGrip" type="Marker3D" parent="." unique_id=2109476962]
-transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.4868996e-14, 0, 2.4868996e-14, 0.99999976, 0, 1.9853529, 3.1391068e-09)
+transform = Transform3D(0.99999976, 0, 0, 0, -4.3711378e-08, -0.99999976, 0, 0.99999976, -4.3711378e-08, 0, 1.9853529, 3.1391068e-09)
 
 [node name="OmniLight3D" type="OmniLight3D" parent="HandGrip" unique_id=1600674039]
 transform = Transform3D(6.896553, 0, 0, 0, 6.896553, 2.842171e-13, 0, -2.842171e-13, 6.896553, 0, 0, 0)
@@ -65,9 +64,12 @@ omni_shadow_mode = 0
 
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." unique_id=1448723297]
 transform = Transform3D(0.99999976, 0, 0, 0, 0.99999976, -2.842171e-14, 0, 2.842171e-14, 0.99999976, 0, 5.588713, -1.0250119e-08)
-material_override = SubResource("StandardMaterial3D_tyv0i")
+material_override = SubResource("ShaderMaterial_6yvt0")
 amount = 32
-lifetime = 0.5
+lifetime = 0.42
 fixed_fps = 60
 process_material = SubResource("ParticleProcessMaterial_nu0uf")
 draw_pass_1 = SubResource("QuadMesh_6yvt0")
+
+[node name="FirstPersonGrip" type="Marker3D" parent="." unique_id=291416381]
+transform = Transform3D(0.99999976, 0, 0, 0, -4.3711378e-08, -0.99999976, 0, 0.99999976, -4.3711378e-08, 0, 1.9853529, 3.1391068e-09)

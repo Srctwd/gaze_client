@@ -1,16 +1,16 @@
 [gd_scene format=3]
 
-[ext_resource type="PackedScene" uid="uid://qf1w0atbtlhj" path="res://assets/meshes/torch01.glb" id="1_nn2ak"]
-[ext_resource type="Texture2D" uid="uid://b5bwnp2l3mgvl" path="res://assets/particles/flame_particle_pixel01.png" id="2_vxi1a"]
+[ext_resource type="PackedScene" path="res://assets/meshes/torch01.glb" id="1_nn2ak"]
+[ext_resource type="Shader" path="res://ps2/ps2_particle.gdshader" id="2_ctvyk"]
+[ext_resource type="Texture2D" path="res://assets/particles/flame_particle_pixel01.ps2.res" id="3_0kwjf"]
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gf70x"]
-transparency = 1
-shading_mode = 0
-vertex_color_use_as_albedo = true
-albedo_color = Color(1, 0.1764706, 0, 1)
-albedo_texture = ExtResource("2_vxi1a")
-billboard_mode = 1
-billboard_keep_scale = true
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_g65m4"]
+render_priority = 0
+shader = ExtResource("2_ctvyk")
+shader_parameter/albedo_tex = ExtResource("3_0kwjf")
+shader_parameter/albedo_color = Vector4(1, 0.1764706, 0, 1)
+shader_parameter/use_vertex_colors = true
+shader_parameter/lit = false
 
 [sub_resource type="Curve" id="Curve_q4l5t"]
 _data = [Vector2(1, 0.8651686), 0.0, 0.0, 0, 0]
@@ -50,7 +50,7 @@ transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0)
 
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." index="0" unique_id=1180451202]
 transform = Transform3D(0.9999999, 0, 0, 0, 0.99999964, 2.9802322e-08, 0, -2.9802322e-08, 0.99999964, 0, 5.588713, 1.1920929e-07)
-material_override = SubResource("StandardMaterial3D_gf70x")
+material_override = SubResource("ShaderMaterial_g65m4")
 amount = 32
 lifetime = 0.5
 fixed_fps = 60

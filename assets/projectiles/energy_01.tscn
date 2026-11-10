@@ -1,22 +1,30 @@
 [gd_scene format=3 uid="uid://die0hbfb0swcn"]
 
-[ext_resource type="PackedScene" uid="uid://bj07l25p0fx5q" path="res://assets/projectiles/Energy01.glb" id="1_j44vi"]
-[ext_resource type="Texture2D" uid="uid://yqymflm7v7fi" path="res://assets/tree03_Image_2.png" id="2_u1na0"]
-[ext_resource type="Script" uid="uid://ba2r0dll7abg" path="res://assets/projectiles/projectile.gd" id="proj_script"]
+[ext_resource type="PackedScene" path="res://assets/projectiles/Energy01.glb" id="1_j44vi"]
+[ext_resource type="Shader" path="res://ps2/ps2_model.gdshader" id="3_u1j2e"]
+[ext_resource type="Shader" path="res://ps2/ps2_particle_add.gdshader" id="4_nl0r6"]
+[ext_resource type="Texture2D" path="res://assets/meshes/tree03_Image_2.msdf.ps2.res" id="5_qmf66"]
+[ext_resource type="Script" path="res://assets/projectiles/projectile.gd" id="proj_script"]
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_j44vi"]
-emission_enabled = true
-emission = Color(0, 0.35666358, 0.6165841, 1)
-emission_energy_multiplier = 3.0
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_tcg38"]
+render_priority = 0
+shader = ExtResource("3_u1j2e")
+shader_parameter/albedo_color = Vector4(1, 1, 1, 1)
+shader_parameter/uv1_scale = Vector3(1, 1, 1)
+shader_parameter/uv1_offset = Vector3(0, 0, 0)
+shader_parameter/use_vertex_colors = false
+shader_parameter/alpha_scissor = 0.0
+shader_parameter/highlight = Vector3(0, 1.0699908, 1.8497524)
+shader_parameter/env_metal = null
+shader_parameter/env_gloss = null
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v4vra"]
-transparency = 1
-blend_mode = 1
-albedo_color = Color(0.49460304, 0.68471646, 1, 1)
-albedo_texture = ExtResource("2_u1na0")
-albedo_texture_msdf = true
-billboard_mode = 1
-billboard_keep_scale = true
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_pil2l"]
+render_priority = 0
+shader = ExtResource("4_nl0r6")
+shader_parameter/albedo_tex = ExtResource("5_qmf66")
+shader_parameter/albedo_color = Vector4(0.49460304, 0.68471646, 1, 1)
+shader_parameter/use_vertex_colors = false
+shader_parameter/lit = true
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_pxldr"]
 emission_shape = 1
@@ -28,12 +36,12 @@ scale_max = 0.5
 [sub_resource type="QuadMesh" id="QuadMesh_u1j2e"]
 
 [node name="Energy01" unique_id=1384147374 instance=ExtResource("1_j44vi")]
+transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, 0)
 script = ExtResource("proj_script")
 hit_sound = "magic"
-transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, 0)
 
 [node name="Icosphere" parent="." index="0" unique_id=75094170]
-material_override = SubResource("StandardMaterial3D_j44vi")
+material_override = SubResource("ShaderMaterial_tcg38")
 
 [node name="AnimationPlayer" parent="." index="1" unique_id=249698571]
 speed_scale = 7.0
@@ -44,8 +52,8 @@ omni_range = 4.0
 
 [node name="GPUParticles3D" type="GPUParticles3D" parent="." index="3" unique_id=987810487]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)
-material_override = SubResource("StandardMaterial3D_v4vra")
+material_override = SubResource("ShaderMaterial_pil2l")
 amount = 30
-lifetime = 0.09999999999999999
+lifetime = 0.1
 process_material = SubResource("ParticleProcessMaterial_pxldr")
 draw_pass_1 = SubResource("QuadMesh_u1j2e")

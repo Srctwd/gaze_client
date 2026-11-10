@@ -16,11 +16,12 @@ func _on_player_id_changed(net_id: int) -> void:
 # The target is whatever unit the player is looking at, re-picked every
 # frame with the same aim scoring as items (_score_candidate) — it's
 # highlighted and synced to the server (pkt_target) whenever it changes, so
-# what glows is exactly what an attack or cast will go for.
+# what glows is exactly what an attack or cast will go for. Holding Alt
+# targets yourself instead (self-casts); letting go goes back to aiming.
 func _process(_delta: float) -> void:
 	if GameState.player_net_id == -1:
 		return
-	var chosen := _pick_unit()
+	var chosen := GameState.player_net_id if _self_targeting() else _pick_unit()
 	if chosen == _current_target:
 		return
 	_set_highlight(_current_target, false)
@@ -30,6 +31,9 @@ func _process(_delta: float) -> void:
 	# local highlight and leaves its last target in place.
 	if chosen != -1:
 		Network.send(Protocol.pkt_target(chosen))
+
+func _self_targeting() -> bool:
+	return Input.is_key_pressed(KEY_ALT) and not GameState.chat_typing
 
 # Best-scoring unit in the aim cone, or -1. The current target is kept
 # unless another one scores clearly better (_TARGET_STICKINESS), so two
@@ -46,7 +50,7 @@ func _pick_unit() -> int:
 	var current_score := INF
 	for net_id in _entity_manager.entities:
 		if net_id == GameState.player_net_id or _entity_manager.chests.has(net_id) \
-				or _entity_manager.starlights.has(net_id):
+				or _entity_manager.starlights.has(net_id) or _entity_manager.bushes.has(net_id):
 			continue
 		var body  := _entity_manager.entities[net_id] as StaticBody3D
 		var score := _score_candidate(body.position, player_pos, screen_center)
@@ -102,7 +106,9 @@ func _get_mi(net_id: int) -> MeshInstance3D:
 	return results[0] as MeshInstance3D if results.size() > 0 else null
 
 # The glow is an additive overlay drawn on top of the mesh, so the unit's own
-# material (textures, PS2 shader) stays untouched while targeted.
+# material (textures, PS2 shader) stays untouched while targeted. Off for now:
+# targeting still picks and syncs the unit, it just isn't drawn.
+const _SHOW_HIGHLIGHT := false
 var _highlight_mat: StandardMaterial3D
 
 func _get_highlight_mat() -> StandardMaterial3D:
@@ -114,6 +120,8 @@ func _get_highlight_mat() -> StandardMaterial3D:
 	return _highlight_mat
 
 func _set_highlight(net_id: int, on: bool) -> void:
+	if not _SHOW_HIGHLIGHT or net_id == GameState.player_net_id:
+		return
 	var mi := _get_mi(net_id)
 	if mi == null:
 		return

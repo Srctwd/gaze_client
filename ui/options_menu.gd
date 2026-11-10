@@ -128,7 +128,7 @@ func _ready() -> void:
 		["Game", [
 			["Esc", "Log out to character select"],
 			["F12", "Toggle fullscreen"],
-			["F9", "Toggle PS2 render mode"],
+			["F10", "Toggle fixed bright lighting (no day/night, no sun shadows)"],
 		]],
 	]
 	for section in BINDINGS:

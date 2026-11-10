@@ -1,0 +1,52 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/props/bush.glb" id="1_bush"]
+[ext_resource type="PackedScene" uid="uid://c4qkkhkinledn" path="res://assets/items/Berry.tscn" id="2_berry"]
+[ext_resource type="Script" path="res://assets/props/berry_bush.gd" id="3_script"]
+
+[node name="BerryBush" type="Node3D"]
+script = ExtResource("3_script")
+
+[node name="Bush" parent="." instance=ExtResource("1_bush")]
+transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, 0)
+
+[node name="Berries" type="Node3D" parent="."]
+
+[node name="Berry1" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(-0.346, 0.773, -0.016)
+
+[node name="Berry2" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(0.327, 1.115, 0.042)
+
+[node name="Berry3" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(0.155, 0.941, -0.576)
+
+[node name="Berry4" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(-0.177, 0.935, 0.629)
+
+[node name="Berry5" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(-0.396, 0.609, -0.487)
+
+[node name="Berry6" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(0.562, 0.433, 0.598)
+
+[node name="Berry7" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(0.491, 0.545, -0.307)
+
+[node name="Berry8" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(-0.521, 0.471, 0.779)
+
+[node name="Berry9" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(-0.061, 0.720, -1.015)
+
+[node name="Berry10" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(0.156, 0.741, 0.681)
+
+[node name="Berry11" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(0.430, 0.900, -0.125)
+
+[node name="Berry12" parent="Berries" instance=ExtResource("2_berry")]
+position = Vector3(-0.605, 0.693, 0.238)
+
+[node name="HitPoint" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.05, 0.6, -0.08)

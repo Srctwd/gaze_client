@@ -15,9 +15,14 @@ const _TORSO_POS := Vector3(0, 1.2, 0)
 
 var _mainhand: Dictionary = {}           # net_id -> item_def_id currently equipped in SLOT_MAINHAND
 var _mainhand_quantity: Dictionary = {}  # net_id -> stack count (1 if not stackable, see EquipSync)
+# net_id -> {slot: item_def_id}, every unit's last EquipSync per slot — put back
+# on a player's body when its model arrives or changes (body_model_changed).
+var _equipped: Dictionary = {}
 
 func _ready() -> void:
 	Network.equip_synced.connect(_on_equip_synced)
+	Network.unit_destroyed.connect(func(net_id: int) -> void: _equipped.erase(net_id))
+	_entity_manager.body_model_changed.connect(_on_body_model_changed)
 	GameState.first_person_changed.connect(func(_fp: bool) -> void: _update_viewmodel.call_deferred())
 
 func get_mainhand_item(net_id: int) -> int:
@@ -32,27 +37,37 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int) -
 	if slot == Protocol.SLOT_MAINHAND:
 		_mainhand[net_id] = item_def_id
 		_mainhand_quantity[net_id] = quantity
+	if not _equipped.has(net_id):
+		_equipped[net_id] = {}
+	_equipped[net_id][slot] = item_def_id
+	# A player's body without its model yet: placed on body_model_changed.
+	if _entity_manager.has_model(net_id):
+		_place(net_id, slot, item_def_id)
 
+func _on_body_model_changed(net_id: int) -> void:
+	var slots: Dictionary = _equipped.get(net_id, {})
+	for slot: int in slots:
+		_place(net_id, slot, slots[slot])
+
+func _place(net_id: int, slot: int, item_def_id: int) -> void:
 	var item_name: String = Protocol.item_name_by_id.get(item_def_id, "")
 	var prefab: PackedScene = Protocol.get_item_prefab(item_name)
 
 	# Mainhand/offhand/headgear/bag/pouch all go through the body's baked
 	# HandGrip/OffHandGrip/Head/Back/Hip markers (see _get_or_create_hand/
-	# _offhand/_head/_back/_hip) — same path for the local player and
-	# everyone else, so first-person weapons swing with the actual hand bone
-	# instead of a hardcoded camera-relative pose.
+	# _offhand/_head/_back/_hip) — the local player's too, for third person.
+	# Our own hand items also get a first-person copy in the viewmodel, which
+	# doesn't depend on the body model's arms.
 	var body := _entity_manager.entities.get(net_id) as StaticBody3D
-	if body == null:
-		return
 	match slot:
 		Protocol.SLOT_MAINHAND:
 			_set_hand_node(_get_or_create_hand(body), prefab)
 			if net_id == GameState.player_net_id:
-				_update_viewmodel()
+				_set_viewmodel_item(0, prefab)
 		Protocol.SLOT_OFFHAND:
 			_set_hand_node(_get_or_create_offhand(body), prefab)
 			if net_id == GameState.player_net_id:
-				_update_viewmodel()
+				_set_viewmodel_item(1, prefab)
 		Protocol.SLOT_HEADGEAR:
 			var helmet := _set_hand_node(_get_or_create_head(body), prefab)
 			# The first-person camera sits on this same Head marker, i.e. inside
@@ -74,9 +89,15 @@ func _on_equip_synced(net_id: int, slot: int, item_def_id: int, quantity: int) -
 		Protocol.SLOT_POUCH:
 			_set_hand_node(_get_or_create_hip(body), prefab)
 
-# Our own MainHand/OffHand items: drawn by the viewmodel overlay in first
-# person (over walls they poke into), by the main camera in third. Shown in
-# first person, after entity_manager.set_first_person hid the whole body.
+func _set_viewmodel_item(hand: int, prefab: PackedScene) -> void:
+	if Viewmodel.current != null:
+		Viewmodel.current.set_item(hand, prefab)
+	_update_viewmodel()
+
+# Our own MainHand/OffHand items on the body: hidden in first person, where
+# the viewmodel draws its own copies instead, like the rest of our body
+# (entity_manager.set_first_person only covers MeshInstance3D, not a torch's
+# particles). Their lights stay on — the viewmodel copies have none.
 func _update_viewmodel() -> void:
 	var body := _entity_manager.entities.get(GameState.player_net_id) as StaticBody3D
 	if body == null:
@@ -84,9 +105,7 @@ func _update_viewmodel() -> void:
 	var fp := GameState.first_person
 	for hand: Node3D in [_get_or_create_hand(body), _get_or_create_offhand(body)]:
 		for gi in hand.find_children("*", "GeometryInstance3D", true, false):
-			(gi as GeometryInstance3D).layers = Viewmodel.LAYER if fp else 1
-			if fp:
-				(gi as GeometryInstance3D).visible = true
+			(gi as GeometryInstance3D).visible = not fp
 
 # No prefab (res://assets/items/<Name>.tscn missing) means the item def has
 # no client-side representation yet — render nothing rather than guess.
@@ -99,7 +118,7 @@ func _set_hand_node(parent: Node3D, prefab: PackedScene) -> Node3D:
 
 	# Equip anchors (HandGrip/OffHandGrip/Head/Back/Hip) sit deep inside the
 	# body model's own hierarchy, which may itself be authored at some
-	# non-1.0 scale (e.g. ManlyMan.tscn's root is 0.3) — without canceling
+	# non-1.0 scale (e.g. Human2.tscn's root is 0.0415) — without canceling
 	# that ambient scale here, the same item prefab renders smaller equipped
 	# than it does as a floor item (floor_items.gd parents it straight to
 	# the world, with no such scale in the way). Read at runtime rather than
@@ -107,18 +126,18 @@ func _set_hand_node(parent: Node3D, prefab: PackedScene) -> Node3D:
 	var ambient_scale: Vector3 = parent.global_transform.basis.get_scale()
 	var correction := Vector3.ONE / ambient_scale
 
-	var grip_origin := Vector3.ZERO
+	var grip := Transform3D.IDENTITY
 	if node is ItemPrefab:
 		# Align the prefab's own HandGrip marker to `parent` (the body's
-		# HandGrip/OffHandGrip/Head/Back/Hip anchor) — a pure translation
-		# zeroes the marker's world offset without ever touching the item's
-		# own root basis, which is whatever orientation/scale correction its
-		# author baked in (may live on the root itself, e.g. Torch, or on a
-		# child, e.g. NoviceStaff) and must survive untouched.
-		grip_origin = (node as ItemPrefab).get_grip_transform().origin
+		# HandGrip/OffHandGrip/Head/Back/Hip anchor), position and rotation,
+		# through the wrapper — never touching the item's own root basis,
+		# which is whatever orientation/scale correction its author baked in
+		# (may live on the root itself, e.g. Torch, or on a child, e.g.
+		# NoviceStaff) and must survive untouched.
+		grip = (node as ItemPrefab).get_grip_transform()
 
 	var wrapper := Node3D.new()
-	wrapper.transform = Transform3D(Basis().scaled(correction), -(correction * grip_origin))
+	wrapper.transform = Transform3D(Basis().scaled(correction)) * grip.affine_inverse()
 	wrapper.add_child(node)
 	parent.add_child(wrapper)
 	return wrapper
@@ -155,7 +174,7 @@ func _get_or_create_offhand(body: StaticBody3D) -> Node3D:
 
 func _get_or_create_head(body: StaticBody3D) -> Node3D:
 	# Prefer a bone-attached Head marker baked into the model (e.g.
-	# ManlyMan.tscn) over the synthetic fallback, same reasoning as
+	# Human2.tscn) over the synthetic fallback, same reasoning as
 	# _get_or_create_hand above.
 	var head := body.find_child("Head", true, false) as Node3D
 	if head != null:
@@ -168,7 +187,7 @@ func _get_or_create_head(body: StaticBody3D) -> Node3D:
 
 func _get_or_create_back(body: StaticBody3D) -> Node3D:
 	# Prefer a bone-attached Back marker baked into the model (e.g.
-	# ManlyMan.tscn) over the synthetic fallback, same reasoning as
+	# Human2.tscn) over the synthetic fallback, same reasoning as
 	# _get_or_create_hand above.
 	var back := body.find_child("Back", true, false) as Node3D
 	if back != null:
@@ -181,7 +200,7 @@ func _get_or_create_back(body: StaticBody3D) -> Node3D:
 
 func _get_or_create_torso(body: StaticBody3D) -> Node3D:
 	# Body armor sits at the chest bone's origin — the same BoneAttachment3D
-	# that holds the Back marker (ManlyMan.tscn), so it follows the torso.
+	# that holds the Back marker (Human2.tscn), so it follows the torso.
 	# Falls back to a fixed offset on models without that marker.
 	var torso := body.find_child("Torso", true, false) as Node3D
 	if torso != null:
@@ -198,7 +217,7 @@ func _get_or_create_torso(body: StaticBody3D) -> Node3D:
 
 func _get_or_create_hip(body: StaticBody3D) -> Node3D:
 	# Prefer a bone-attached Hip marker baked into the model (e.g.
-	# ManlyMan.tscn) over the synthetic fallback, same reasoning as
+	# Human2.tscn) over the synthetic fallback, same reasoning as
 	# _get_or_create_hand above.
 	var hip := body.find_child("Hip", true, false) as Node3D
 	if hip != null:

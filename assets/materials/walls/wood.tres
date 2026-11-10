@@ -1,0 +1,22 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://dnjuqctnl3kj"]
+
+[ext_resource type="Shader" uid="uid://bn8c6wevq64kl" path="res://ps2/ps2_world.gdshader" id="1_jdaa1"]
+[ext_resource type="Texture2D" uid="uid://bxmu1gni5sbel" path="res://assets/textures/Arc_bark.jpg" id="2_jdaa1"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_jdaa1")
+shader_parameter/use_cells = false
+shader_parameter/cell_tile = PackedFloat32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+shader_parameter/cell_origin = Vector2(0, 0)
+shader_parameter/cell_size = 0.5
+shader_parameter/albedo_tex = ExtResource("2_jdaa1")
+shader_parameter/projection = 2
+shader_parameter/tile_scale = 2.0
+shader_parameter/tint = Vector3(1, 1, 1)
+shader_parameter/flat_backface = false
+shader_parameter/backface_color = Vector3(0.25, 0.22, 0.2)
+shader_parameter/dir_light_scale = 1.0
+shader_parameter/ambient_scale = 1.0
+shader_parameter/env_metal = 0.0
+shader_parameter/env_gloss = 0.0

@@ -136,5 +136,9 @@ func is_in_water(pos: Vector3) -> bool:
 			return true
 	return false
 
+# The local player's position each frame, for the grass to part around.
+func set_grass_push(pos: Vector3) -> void:
+	WorldData.Grass.set_push(pos)
+
 func footstep_surface(feet: Vector3) -> String:
 	return _wd.footstep_surface(feet) if _wd != null else "stone"

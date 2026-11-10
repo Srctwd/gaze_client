@@ -1,11 +1,15 @@
 [gd_scene format=3 uid="uid://bpatb3tr0bbsa"]
 
 [ext_resource type="PackedScene" uid="uid://dm8oeguer3ngm" path="res://assets/meshes/frozenstarlight.glb" id="1_v5wu3"]
+[ext_resource type="Material" uid="uid://baofbwl14vxbe" path="res://assets/meshes/blue_slime_material.tres" id="2_7xsgq"]
 
-[node name="frozenstarlight" unique_id=2083489491 instance=ExtResource("1_v5wu3")]
+[node name="frozenstarlight" unique_id=805844321 instance=ExtResource("1_v5wu3")]
 transform = Transform3D(0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0)
 
+[node name="Icosphere" parent="." index="0" unique_id=1740518243]
+material_override = ExtResource("2_7xsgq")
+
 [node name="OmniLight3D" type="OmniLight3D" parent="." index="1" unique_id=80079065]
-transform = Transform3D(3.333333, 0, 0, 0, 3.333333, 0, 0, 0, 3.333333, 0, 1.0332824, 0)
+transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0, 1.0281928, 0)
 light_color = Color(0, 0, 1, 1)
-omni_range = 0.848
+omni_range = 0.7

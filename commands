@@ -1,0 +1,23 @@
+# ── run ───────────────────────────────────────────────────────────────────────
+~/Downloads/Godot_v4.6.2-stable_linux.x86_64 --path ~/gaze_client/
+~/Downloads/Godot_v4.6.2-stable_linux.x86_64 --path ~/gaze_client/ --editor
+
+# world editor (lives inside this project, not its own)
+~/Downloads/Godot_v4.6.2-stable_linux.x86_64 --path ~/gaze_client/ res://world_editor/main.tscn
+
+# ── update the client's world (after editing village.bin) ─────────────────────
+cp /home/srctwd/gaze_client/world_editor/village.bin /home/srctwd/gaze_client/world.bin
+cp /home/srctwd/gaze_client/world_editor/village.cells.bin /home/srctwd/gaze_client/world.cells.bin   # cell textures, client only (if painted)
+
+# ── update server world ───────────────────────────────────────────────────────
+scp /home/srctwd/gaze_client/world_editor/village.bin root@159.223.108.158:~/stone_gaze/world.bin
+
+# ── build + publish the client ────────────────────────────────────────────────
+# export the Windows exe (needs the 4.6.2 export templates installed)
+~/Downloads/Godot_v4.6.2-stable_linux.x86_64 --headless --path ~/gaze_client/ --export-release "Windows Desktop" build/gaze_client.exe
+
+# upload it as the website's download
+scp /home/srctwd/gaze_client/build/gaze_client.exe root@159.223.108.158:~/gaze_web/static/gaze_client.exe
+
+# -- converting new materials
+godot --headless --path . -s res://ps2/tools/convert_resources.gd -- res://path/to/effect.tscn

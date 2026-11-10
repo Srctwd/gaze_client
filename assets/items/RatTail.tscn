@@ -4,6 +4,10 @@
 [ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2_gt6ty"]
 
 [node name="rat_tail" unique_id=1312259886 instance=ExtResource("1_7ciup")]
+script = ExtResource("2_gt6ty")
 
 [node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=1432885569]
-script = ExtResource("2_gt6ty")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="FirstPersonGrip" type="Marker3D" parent="." unique_id=461602337]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)

@@ -3,6 +3,8 @@ extends Node
 signal player_moved(pos: Vector3)
 signal player_head_moved(pos: Vector3)
 signal player_body_changed(radius: float, height: float)
+# A player's model went in (or was replaced): equipment.gd puts the items back on it.
+signal body_model_changed(net_id: int)
 
 var entities:  Dictionary = {}  # net_id (int) -> StaticBody3D
 var _xp_orbs:  Array     = []  # {node: GPUParticles3D, target_id: int}
@@ -14,8 +16,6 @@ var _xp_orbs:  Array     = []  # {node: GPUParticles3D, target_id: int}
 # the camera (camera_controller.gd's follow()) tracks the same smoothing.
 var _targets: Dictionary = {}  # net_id (int) -> {pos, rot_y, pitch, anim_state, is_moving}
 
-const _PLAYER_SCENE := preload("res://player.tscn")
-
 # net_id -> AnimationPlayer, cached on spawn for whichever entities have one
 # (only some models do — everything else silently no-ops in _drive_animation).
 var _anim_players: Dictionary = {}
@@ -25,7 +25,7 @@ var _current_anim: Dictionary = {}  # net_id -> currently playing clip name
 # spine (see _attach_pitch_tilt). Fed tgt.pitch every frame in _process.
 var _pitch_tilts: Dictionary = {}
 
-# Local player's bone-attached Head Marker3D (assets/monsters/ManlyMan.tscn),
+# Local player's bone-attached Head Marker3D (assets/monsters/Homunculus.tscn),
 # cached on spawn so the FP camera can track the actual head bone instead of
 # a fixed eye-height guess. Null if the equipped model has no such marker.
 var _player_head: Node3D = null
@@ -38,6 +38,7 @@ var _player_head_offset_valid := false
 # Per-tick position delta above which Ground state counts as "moving" rather
 # than idle — small enough to catch normal walk speed, big enough to ignore
 # interpolation/network jitter.
+const Ps2Materials := preload("res://ps2/ps2_materials.gd")
 const _MOVE_EPS := 0.05
 
 # Per-update position jump above which the body snaps instead of easing — a
@@ -71,12 +72,12 @@ const _SWING_IMPACT_META := &"swing_impact"
 # Slowest the lead-in plays — a long windup reaches the impact pose early and
 # holds it instead of crawling there in slow motion.
 const _WINDUP_MIN_SPEED := 0.6
-# How long past the expected hit to keep holding before giving up on an
-# ActionOk that isn't coming (e.g. a ranged attack resolves as FreeAimShot).
-const _WINDUP_GRACE := 0.5
 
 var _swing_impacts: Dictionary = {}  # net_id -> seconds into Swing, for models that set it
-var _windup_until:  Dictionary = {}  # net_id -> Time.get_ticks_msec() to stop holding a windup
+# net_id -> true while holding a windup's impact pose. Only the server ends it:
+# ActionOk, a cancel (ActionWindup with ACTION_NOTHING), or a FreeAimShot (how
+# a ranged attack resolves) — never a client-side timeout.
+var _winding_up:    Dictionary = {}
 
 # Chests are units that never move. Whether one is open is per player and
 # never sent ahead of time — it's learned from the server's ChestResult to our
@@ -91,6 +92,10 @@ const _CHEST_SCALE := 0.5
 # the crystal itself, and its collision, come from world.bin's static object.
 var starlights: Dictionary = {}  # net_id -> true, every FrozenStarlight unit currently known
 
+# Berry bushes: E picks a berry (InteractEntity). The unit's variant is how
+# many berries it has; its BerryBush scene shows that many (berry_count).
+var bushes: Dictionary = {}  # net_id -> true, every berry bush unit currently known
+
 var _mesh_by_type:  Dictionary = {}  # unit_type (int) -> PackedScene
 var _slime_scenes: Array     = []  # index by (variant >> 6) & 0x3
 
@@ -104,9 +109,21 @@ const _NPC_SPEECH_HEIGHT     := 0.93  # share of the body's full height (_body_d
 const _NPC_SPEECH_JITTER     := 0.3  # random x/y offset so replies don't always land in the same spot
 const _NPC_SPEECH_HIDE_DELAY := 6.0
 const _NPC_SPEECH_COLOR      := Color.YELLOW
-const _CHEST_SPEECH_COLOR    := Color.WHITE  # a chest "speaking", e.g. "Not enough room"
+const _CHEST_SPEECH_COLOR    := Color.WHITE  # a chest "speaking", e.g. "Not enough room", or your own unit, e.g. "You are full."
 const _NPC_HIGHLIGHT_COLOR   := Color(0.55, 0.8, 1.0)  # lightish blue
 const _NPC_SPEECH_FONT_SIZE  := 16
+const _NPC_SPEECH_OUTLINE    := 3  # at _NPC_SPEECH_FONT_SIZE
+# Speech from anything but a player sits in the world: from the camera to the
+# unit's body edge, every _NPC_SPEECH_BAND meters drops the font by
+# _NPC_SPEECH_SIZE_STEP px from _NPC_SPEECH_NEAR_SIZE, outline per band from
+# _NPC_SPEECH_OUTLINES (none past its end):
+# 0-1.5m 18px/3, 1.5-3m 16px/3, 3-4.5m 14px/2, 4.5-6m 12px/2, 10px/1, 8px/1,
+# 6px/1, then 4px, 2px with no outline, and 1px from 13.5m on.
+# Player speech stays at _NPC_SPEECH_FONT_SIZE at any distance.
+const _NPC_SPEECH_NEAR_SIZE  := 18
+const _NPC_SPEECH_BAND       := 1.5
+const _NPC_SPEECH_SIZE_STEP  := 2
+const _NPC_SPEECH_OUTLINES: Array[int] = [3, 3, 2, 2, 1, 1, 1]
 
 @onready var _npc_speech_camera: Camera3D = $"../Camera3D"
 var _npc_speech_canvas: CanvasLayer
@@ -115,6 +132,12 @@ var _npc_labels:  Dictionary = {}  # net_id (int) -> RichTextLabel
 var _npc_offsets: Dictionary = {}  # net_id (int) -> Vector3, world-space offset above the body
 var _npc_active:  Dictionary = {}  # net_id (int) -> bool, true while the reply hasn't timed out yet
 var _npc_timers:  Dictionary = {}  # net_id (int) -> Timer
+
+var _skins:       Dictionary = {}  # net_id (int) -> SkinTint, players' bodies
+# net_id (int) -> {race, color}, from Appearances (kept until the unit leaves).
+# A player's body has no model until this is known; _unmodeled lists those.
+var _appearances: Dictionary = {}
+var _unmodeled:   Dictionary = {}  # net_id (int) -> true
 
 # The server tracks position.y as the center of a physics sphere resting on
 # the ground (stone_gaze/src/systems/physics.cpp: terrain_surface = sample_floor
@@ -156,21 +179,22 @@ const _VARIANT_PALETTES := {
 }
 
 func _ready() -> void:
-	_mesh_by_type[Protocol.UNIT_PLAYER]    = load("res://assets/monsters/ManlyMan.tscn")
-	_mesh_by_type[Protocol.UNIT_MINOTAUR]  = load("res://assets/minotaur.obj")
-	_mesh_by_type[Protocol.UNIT_MINO_MAGE] = load("res://assets/stone_man.glb")
-	_mesh_by_type[Protocol.UNIT_SNAKE]     = load("res://assets/snake.glb")
-	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/meshes/goblin01.glb")
+	_mesh_by_type[Protocol.UNIT_MINOTAUR]  = load("res://assets/monsters/Minotaur.tscn")
+	_mesh_by_type[Protocol.UNIT_MINO_MAGE] = load("res://assets/monsters/StoneMan.tscn")
+	_mesh_by_type[Protocol.UNIT_SNAKE]     = load("res://assets/monsters/Snake.tscn")
+	_mesh_by_type[Protocol.UNIT_GOBLIN]    = load("res://assets/monsters/Goblin.tscn")
 	_mesh_by_type[Protocol.UNIT_DEMON]     = load("res://assets/monsters/low_poly_demon_man_v_3.tscn")
 	_mesh_by_type[Protocol.UNIT_RAT]       = load("res://assets/monsters/Rat.tscn")
 	_mesh_by_type[Protocol.UNIT_CAVE_RAT]  = load("res://assets/monsters/CaveRat.tscn")
-	_mesh_by_type[Protocol.UNIT_NPC]       = load("res://assets/npcs/Feras.tscn")
+	_mesh_by_type[Protocol.UNIT_NPC]       = load("res://assets/monsters/Human2.tscn")   # placeholder for every NPC
 	_mesh_by_type[Protocol.UNIT_VALKYRIE]  = load("res://assets/monsters/Valkyrie.tscn")
-	_mesh_by_type[Protocol.UNIT_CHEST]     = load("res://assets/meshes/chest01.glb")
+	_mesh_by_type[Protocol.UNIT_WITCH]     = _mesh_by_type[Protocol.UNIT_NPC]
+	_mesh_by_type[Protocol.UNIT_CHEST]     = load("res://assets/props/Chest.tscn")
+	_mesh_by_type[Protocol.UNIT_BERRY_BUSH] = load("res://assets/props/BerryBush.tscn")
 	_slime_scenes = [
 		load("res://assets/monsters/GreenSlime.tscn"),  # 0 green
-		load("res://assets/slime_blue.glb"),             # 1 blue
-		load("res://assets/slime_red.glb"),              # 2 red
+		load("res://assets/monsters/BlueSlime.tscn"),   # 1 blue
+		load("res://assets/monsters/RedSlime.tscn"),    # 2 red
 		load("res://assets/monsters/GreenSlime.tscn"),  # 3 fallback
 	]
 
@@ -182,6 +206,8 @@ func _ready() -> void:
 	Network.level_up.connect(_on_level_up)
 	Network.action_ok.connect(_on_action_ok)
 	Network.action_windup.connect(_on_action_windup)
+	Network.free_aim_shot.connect(_on_free_aim_shot)
+	Appearances.appearance_known.connect(set_appearance)
 	Network.npc_speech.connect(_on_npc_speech)
 	Network.chest_result.connect(_on_chest_result)
 	Network.login_ok.connect(func(_id: int): opened_chests.clear())
@@ -202,7 +228,7 @@ func _on_unit_destroyed(net_id: int) -> void:
 		_anim_players.erase(net_id)
 		_current_anim.erase(net_id)
 		_swing_impacts.erase(net_id)
-		_windup_until.erase(net_id)
+		_winding_up.erase(net_id)
 		_pitch_tilts.erase(net_id)
 		if _npc_labels.has(net_id):
 			_npc_labels[net_id].queue_free()  # also frees its child Timer, see _on_npc_speech
@@ -213,6 +239,10 @@ func _on_unit_destroyed(net_id: int) -> void:
 		chests.erase(net_id)
 		_chest_anims.erase(net_id)
 		starlights.erase(net_id)
+		bushes.erase(net_id)
+		_skins.erase(net_id)
+		_unmodeled.erase(net_id)
+	_appearances.erase(net_id)
 
 func _on_npc_speech(npc_net_id: int, _target_player_net_id: int, text: String) -> void:
 	if not entities.has(npc_net_id):
@@ -228,8 +258,8 @@ func _on_npc_speech(npc_net_id: int, _target_player_net_id: int, text: String) -
 		label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 		label.add_theme_font_size_override("normal_font_size", _NPC_SPEECH_FONT_SIZE)
 		label.add_theme_color_override("default_color",
-			_CHEST_SPEECH_COLOR if chests.has(npc_net_id) else _NPC_SPEECH_COLOR)
-		label.add_theme_constant_override("outline_size", 3)
+			_CHEST_SPEECH_COLOR if chests.has(npc_net_id) or bushes.has(npc_net_id) or npc_net_id == GameState.player_net_id else _NPC_SPEECH_COLOR)
+		label.add_theme_constant_override("outline_size", _NPC_SPEECH_OUTLINE)
 		label.add_theme_color_override("font_outline_color", Color.BLACK)
 		label.visible = false
 		_npc_speech_canvas.add_child(label)
@@ -265,6 +295,21 @@ func _update_npc_speech_labels() -> void:
 			label.visible = false
 			continue
 		label.visible = true
+		var font_size := _NPC_SPEECH_FONT_SIZE
+		var outline := _NPC_SPEECH_OUTLINE
+		if body.get_meta("unit_type", -1) != Protocol.UNIT_PLAYER:
+			# Measured from the body's edge, not its center: a unit with a big
+			# body keeps you farther off, and its text shouldn't pay for that.
+			var radius: float = (_body_dims.get(npc_id, _DEFAULT_BODY) as Vector2).x
+			var depth := -(_npc_speech_camera.global_transform.affine_inverse() * world_pos).z - radius
+			var band := maxi(floori(depth / _NPC_SPEECH_BAND), 0)
+			font_size = maxi(_NPC_SPEECH_NEAR_SIZE - band * _NPC_SPEECH_SIZE_STEP, 1)
+			outline = _NPC_SPEECH_OUTLINES[band] if band < _NPC_SPEECH_OUTLINES.size() else 0
+		# Re-rendered at the new size (crisp), not a scaled 16px label (blurry).
+		if label.get_theme_font_size("normal_font_size") != font_size:
+			label.add_theme_font_size_override("normal_font_size", font_size)
+			label.add_theme_constant_override("outline_size", outline)
+			label.reset_size()
 		label.position = _npc_speech_camera.unproject_position(world_pos) - label.size * 0.5
 
 func _process(delta: float) -> void:
@@ -384,10 +429,17 @@ func _on_unit_spawned(net_id: int, unit_type: int, variant: int, pos: Vector3, _
 	if unit_type == Protocol.UNIT_FROZEN_STARLIGHT:
 		starlights[net_id] = true
 		return
+	if unit_type == Protocol.UNIT_BERRY_BUSH:
+		bushes[net_id] = true
+		_show_berries(net_id, variant)
+		return
+	if unit_type == Protocol.UNIT_PLAYER:
+		_try_player_model(net_id)
+		return
 	_apply_variant(body, unit_type, variant)
 	_cache_anim_player(net_id, body)
 	_attach_pitch_tilt(net_id, body)
-	if unit_type != Protocol.UNIT_PLAYER and unit_type != Protocol.UNIT_NPC:
+	if unit_type != Protocol.UNIT_NPC:
 		_delay_monster_reveal(body)
 
 # Hides a freshly spawned monster's own meshes for a beat (see
@@ -418,10 +470,16 @@ func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y
 			_setup_chest(net_id, body)
 		elif unit_type == Protocol.UNIT_FROZEN_STARLIGHT:
 			starlights[net_id] = true
+		elif unit_type == Protocol.UNIT_BERRY_BUSH:
+			bushes[net_id] = true
+		elif unit_type == Protocol.UNIT_PLAYER:
+			_try_player_model(net_id)
 		else:
 			_apply_variant(body, unit_type, variant)
 			_cache_anim_player(net_id, body)
 			_attach_pitch_tilt(net_id, body)
+	if bushes.has(net_id):
+		_show_berries(net_id, variant)
 
 	# Moving is inferred from how far this tick's position is from the last
 	# one — the server doesn't split Ground into idle/walk/run on its own.
@@ -434,44 +492,42 @@ func _on_unit_pos(net_id: int, unit_type: int, variant: int, pos: Vector3, rot_y
 	_targets[net_id] = {pos = pos, rot_y = rot, pitch = pitch, anim_state = anim_state, is_moving = is_moving}
 
 func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
-	var body: StaticBody3D
-	if net_id == GameState.player_net_id:
-		body = _PLAYER_SCENE.instantiate() as StaticBody3D
-		for mi in body.find_children("*", "MeshInstance3D", true, false):
-			(mi as MeshInstance3D).visible = not GameState.first_person
-		_player_head = body.find_child("Head", true, false) as Node3D
-		_player_head_offset_valid = false
+	var body := StaticBody3D.new()
+	body.set_meta("unit_type", unit_type)
+	if unit_type == Protocol.UNIT_FROZEN_STARLIGHT:
+		body.set_meta("net_id", net_id)
+		return body
+	if unit_type == Protocol.UNIT_PLAYER:
+		_unmodeled[net_id] = true   # its model comes with its appearance (set_appearance)
+		return _finish_body(net_id, body)
+	var scene: PackedScene
+	if unit_type == Protocol.UNIT_SLIME:
+		scene = _slime_scenes[(variant >> 6) & 0x3]
 	else:
-		body = StaticBody3D.new()
-		if unit_type == Protocol.UNIT_FROZEN_STARLIGHT:
-			body.set_meta("net_id", net_id)
-			return body
-		var scene: PackedScene
-		if unit_type == Protocol.UNIT_SLIME:
-			scene = _slime_scenes[(variant >> 6) & 0x3]
-		else:
-			scene = _mesh_by_type.get(unit_type, null)
-		if scene == null:
-			scene = _mesh_by_type.get(Protocol.UNIT_MINO_MAGE)
-		var mesh_node := scene.instantiate() as Node3D
-		if unit_type == Protocol.UNIT_SLIME:
-			mesh_node.scale = Vector3(0.5, 0.5, 0.5)
-		body.add_child(mesh_node)
-		if unit_type == Protocol.UNIT_CHEST:
-			mesh_node.scale = Vector3.ONE * _CHEST_SCALE
-			# Same footprint as the server's wall-style collider (chest.cpp).
-			var box := BoxShape3D.new()
-			box.size = Vector3(1.25, 0.77, 0.74)
-			var box_col := CollisionShape3D.new()
-			box_col.shape = box
-			box_col.position = Vector3(0.0, 0.385, -0.24)
-			body.add_child(box_col)
-			body.set_meta("net_id", net_id)
-			return body
-		if unit_type == Protocol.UNIT_PLAYER or unit_type == Protocol.UNIT_NPC:
-			_fit_models[net_id] = mesh_node
-	if net_id == GameState.player_net_id:
-		_fit_models[net_id] = body.get_node("Mesh")
+		scene = _mesh_by_type.get(unit_type, null)
+	if scene == null:
+		scene = _mesh_by_type.get(Protocol.UNIT_MINO_MAGE)
+	var mesh_node := scene.instantiate() as Node3D
+	if unit_type == Protocol.UNIT_SLIME:
+		mesh_node.scale = Vector3(0.5, 0.5, 0.5)
+	body.add_child(mesh_node)
+	if unit_type == Protocol.UNIT_CHEST:
+		mesh_node.scale = Vector3.ONE * _CHEST_SCALE
+		# Same footprint as the server's wall-style collider (chest.cpp).
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.25, 0.77, 0.74)
+		var box_col := CollisionShape3D.new()
+		box_col.shape = box
+		box_col.position = Vector3(0.0, 0.385, -0.24)
+		body.add_child(box_col)
+		body.set_meta("net_id", net_id)
+		return body
+	# Human2.tscn isn't authored at a body's size: fit it to the server's.
+	if unit_type == Protocol.UNIT_NPC or unit_type == Protocol.UNIT_WITCH:
+		_fit_models[net_id] = mesh_node
+	return _finish_body(net_id, body)
+
+func _finish_body(net_id: int, body: StaticBody3D) -> StaticBody3D:
 	# The server's body (see _body_dims), sized by _apply_body_size.
 	var col := CollisionShape3D.new()
 	col.shape = CylinderShape3D.new()
@@ -480,6 +536,59 @@ func _make_body(net_id: int, unit_type: int, variant: int = 0) -> StaticBody3D:
 	body.set_meta("net_id", net_id)
 	_apply_body_size(net_id)
 	return body
+
+# A player unit's race and skin colour (Appearances), kept for a body that
+# isn't built yet. A changed race swaps the model; a changed colour retints.
+func set_appearance(net_id: int, race: int, color: Color) -> void:
+	var old: Dictionary = _appearances.get(net_id, {})
+	_appearances[net_id] = {race = race, color = color}
+	if not entities.has(net_id):
+		return
+	if _unmodeled.has(net_id) or old.get("race") != race:
+		_set_player_model(net_id)
+	elif _skins.has(net_id):
+		_skins[net_id].set_color(color)
+
+func _try_player_model(net_id: int) -> void:
+	if _appearances.has(net_id):
+		_set_player_model(net_id)
+
+# False while a player's body waits for its model — equipment.gd holds its
+# items until body_model_changed.
+func has_model(net_id: int) -> bool:
+	return entities.has(net_id) and not _unmodeled.has(net_id)
+
+# Puts the race's model in the player's body, replacing any earlier one along
+# with what hung off it (anim player, pitch tilt, equipment — re-placed by
+# equipment.gd on body_model_changed).
+func _set_player_model(net_id: int) -> void:
+	var body := entities[net_id] as StaticBody3D
+	var look: Dictionary = _appearances[net_id]
+	var old := _fit_models.get(net_id) as Node3D
+	if old != null:
+		body.remove_child(old)
+		old.queue_free()
+	_anim_players.erase(net_id)
+	_current_anim.erase(net_id)
+	_swing_impacts.erase(net_id)
+	_pitch_tilts.erase(net_id)
+
+	var model := Races.model(look.race).instantiate() as Node3D
+	body.add_child(model)
+	_fit_models[net_id] = model
+	_unmodeled.erase(net_id)
+	if net_id == GameState.player_net_id:
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).visible = not GameState.first_person
+		_player_head = model.find_child("Head", true, false) as Node3D
+		_player_head_offset_valid = false
+	# Before equipment.gd attaches anything, so only the body itself is tinted.
+	_skins[net_id] = SkinTint.new(model)
+	_skins[net_id].set_color(look.color)
+	_apply_body_size(net_id)
+	_cache_anim_player(net_id, body)
+	_attach_pitch_tilt(net_id, body)
+	body_model_changed.emit(net_id)
 
 # SpawnUnit's size, or a later UnitSize (Wild Growth) for a unit already here.
 func set_body_size(net_id: int, radius: float, height: float) -> void:
@@ -513,18 +622,19 @@ func _model_top(model: Node3D) -> float:
 	var key := model.scene_file_path
 	if _model_tops.has(key):
 		return _model_tops[key]
-	var top := 0.0
-	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
-		var xf := mi.transform
-		var p := mi.get_parent()
-		while p != model:
-			if p is Node3D:
-				xf = (p as Node3D).transform * xf
-			p = p.get_parent()
-		top = maxf(top, (xf * mi.get_aabb()).end.y)
+	var top := maxf(ModelBounds.rest_aabb(model).end.y, 0.0)
 	if not key.is_empty():
 		_model_tops[key] = top
 	return top
+
+# A berry bush shows as many berries as it has left (its unit variant).
+func _show_berries(net_id: int, count: int) -> void:
+	var body := entities.get(net_id) as Node3D
+	if body == null:
+		return
+	for child in body.get_children():
+		if "berry_count" in child:  # berry_bush.gd
+			child.berry_count = count
 
 func _setup_chest(net_id: int, body: Node3D) -> void:
 	chests[net_id] = true
@@ -568,9 +678,9 @@ func _apply_variant(body: Node3D, unit_type: int, variant: int) -> void:
 	var tint        := Color(base.r * brightness, base.g * brightness, base.b * brightness)
 	if unit_type == Protocol.UNIT_SLIME:
 		return
+	var mat := Ps2Materials.model(StandardMaterial3D.new())
+	Ps2Materials.set_color(mat, tint)
 	for mi: MeshInstance3D in body.find_children("*", "MeshInstance3D", true, false):
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = tint
 		mi.material_override = mat
 
 func _player_eye(net_id: int, body: Node3D) -> Vector3:
@@ -605,15 +715,14 @@ func _cache_anim_player(net_id: int, body: Node3D) -> void:
 		if player.has_animation(anim_name):
 			player.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
 	_anim_players[net_id] = player
-	# The model's scene root is the body's direct child (player.tscn's Mesh
-	# for the local player).
+	# The model's scene root is the body's direct child.
 	for child in body.get_children():
 		if child.has_meta(_SWING_IMPACT_META):
 			_swing_impacts[net_id] = float(child.get_meta(_SWING_IMPACT_META))
 
 func _on_action_ok(actor_id: int, effect: int, _target_id: int, action_type: int) -> void:
 	# Any resolved action ends a held windup, swing or not.
-	var was_winding_up: bool = _windup_until.erase(actor_id)
+	var was_winding_up: bool = _winding_up.erase(actor_id)
 	if action_type != Protocol.ACTION_ATTACK or effect != Protocol.EFFECT_SWING:
 		return
 	var player := _anim_players.get(actor_id) as AnimationPlayer
@@ -623,6 +732,8 @@ func _on_action_ok(actor_id: int, effect: int, _target_id: int, action_type: int
 	player.stop(true)
 	if was_winding_up:
 		player.play_section("Swing", _swing_impacts[actor_id])
+		# Or the first frame shows the clip's start (stop() rewound it).
+		player.seek(_swing_impacts[actor_id], true)
 	else:
 		player.play("Swing")
 	_current_anim[actor_id] = "Swing"
@@ -632,10 +743,7 @@ func _on_action_windup(actor_id: int, action_type: int, windup: float) -> void:
 	if player == null or not _swing_impacts.has(actor_id) or not player.has_animation("Swing"):
 		return
 	if action_type == Protocol.ACTION_NOTHING:
-		# Cancelled — let _drive_animation resume locomotion.
-		if _windup_until.erase(actor_id):
-			player.stop()
-			_current_anim.erase(actor_id)
+		_end_windup(actor_id)
 		return
 	if action_type != Protocol.ACTION_ATTACK and action_type != Protocol.ACTION_ABILITY:
 		return
@@ -644,17 +752,29 @@ func _on_action_windup(actor_id: int, action_type: int, windup: float) -> void:
 	player.stop(true)
 	player.play_section("Swing", 0.0, impact, -1, speed)
 	_current_anim[actor_id] = "Swing"
-	_windup_until[actor_id] = Time.get_ticks_msec() + int((windup + _WINDUP_GRACE) * 1000.0)
+	_winding_up[actor_id] = true
+
+# A ranged attack resolves as a FreeAimShot, not an ActionOk.
+func _on_free_aim_shot(actor_id: int, _origin: Vector3, _yaw: float, _pitch: float, _speed: float, _range: float, _effect: int) -> void:
+	_end_windup(actor_id)
+
+# The server ended actor_id's windup without a swing — let _drive_animation
+# resume locomotion.
+func _end_windup(actor_id: int) -> void:
+	if not _winding_up.erase(actor_id):
+		return
+	var player := _anim_players.get(actor_id) as AnimationPlayer
+	if player != null:
+		player.stop()
+	_current_anim.erase(actor_id)
 
 func _drive_animation(net_id: int, tgt: Dictionary) -> void:
 	var player := _anim_players.get(net_id) as AnimationPlayer
 	if player == null:
 		return
-	# Hold a windup's impact pose until ActionOk, a cancel, or the grace runs out.
-	if _windup_until.has(net_id):
-		if Time.get_ticks_msec() < _windup_until[net_id]:
-			return
-		_windup_until.erase(net_id)
+	# Hold a windup's impact pose until the server resolves it (see _winding_up).
+	if _winding_up.has(net_id):
+		return
 	# Let a one-shot action clip (e.g. Swing) finish before resuming
 	# locomotion instead of stomping it every frame.
 	if player.is_playing() and not (_current_anim.get(net_id) in _LOCOMOTION_CLIPS):

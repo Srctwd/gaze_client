@@ -9,3 +9,6 @@ script = ExtResource("2_prefab")
 
 [node name="ChestGrip" type="Marker3D" parent="." index="1" unique_id=853505081]
 transform = Transform3D(0.9999999, 0, 0, 0, 0.99999917, 0, 0, 0, 0.9999994, 0, 1.9521948, 0.24254183)
+
+[node name="FirstPersonGrip" type="Marker3D" parent="." unique_id=1598843550]
+transform = Transform3D(0.9999999, 0, 0, 0, 0.99999917, 0, 0, 0, 0.9999994, 0, 1.9521948, 0.24254183)

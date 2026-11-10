@@ -1,9 +1,22 @@
 [gd_scene format=3 uid="uid://b411jxsxlin0k"]
 
 [ext_resource type="PackedScene" uid="uid://6s6fwtmkfjbi" path="res://assets/meshes/arrow.glb" id="1"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2"]
+[ext_resource type="Material" uid="uid://c7stl5g7ffk0g" path="res://assets/materials/iron.tres" id="3_hnrj4"]
+[ext_resource type="Material" path="res://assets/materials/walls/iron.tres" id="4_swsou"]
 
 [node name="Arrow" unique_id=621780838 instance=ExtResource("1")]
 transform = Transform3D(-0.12, 0, -1.8119495e-08, 0, 0.12, 0, 1.8119495e-08, 0, -0.12, 0, 0, -0.7486641)
+script = ExtResource("2")
+
+[node name="Cone" parent="." index="0" unique_id=957423217]
+material_override = ExtResource("3_hnrj4")
+
+[node name="Cube" parent="." index="1" unique_id=470121538]
+material_override = ExtResource("4_swsou")
 
 [node name="HandGrip" type="Marker3D" parent="." index="4" unique_id=1987844490]
-transform = Transform3D(0.99999976, 0, -1.4210855e-14, 0, 0.99999976, 0, 1.4210855e-14, 0, 0.99999976, 4.356484e-07, 0, -4.9832373)
+transform = Transform3D(-0.99999976, 0, 1.5099576e-07, 0, 0.99999976, 0, -1.5099576e-07, 0, -0.99999976, 4.356484e-07, 0, -4.9832373)
+
+[node name="FirstPersonGrip" type="Marker3D" parent="." index="5" unique_id=863157915]
+transform = Transform3D(-0.99999976, 0, 1.5099576e-07, 0, 0.99999976, 0, -1.5099576e-07, 0, -0.99999976, 4.356484e-07, 0, -4.9832373)

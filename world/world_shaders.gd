@@ -1,183 +1,131 @@
-const _GRASS_TEX = preload("res://assets/tileable_grass.png")
-const _CAVE_TEX  = preload("res://assets/cave_texture.jpg")
+const _GRASS_TEX = preload("res://assets/textures/tileable_grass.png")
+const _CAVE_TEX  = preload("res://assets/textures/cave_texture.jpg")
+
+
+# Every world material is a PS2 one (res://ps2/, PS2_RENDERING.md): terrain,
+# caves and walls share ps2_world.gdshader, picking its texture projection
+# per material; water uses ps2_water.gdshader. Their lighting and fog come
+# from the global uniforms the Ps2 autoload sets every frame.
+const PS2_WORLD_SHADER = preload("res://ps2/ps2_world.gdshader")
+const PS2_WATER_SHADER = preload("res://ps2/ps2_water.gdshader")
+const PROJECTION_TOP_DOWN := 1
+const PROJECTION_TRIPLANAR := 2
+# Caves get the full scene ambient (× Ps2.ambient_gain 0.6 ≈ 1.0) and no sun;
+# less leaves a torch as the only light, so caves go red.
+const CAVE_AMBIENT := 1.67
 
 
 static func water_mat() -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode blend_mix, depth_draw_opaque;
-uniform vec4  water_color : source_color = vec4(0.08, 0.38, 0.65, 0.6);
-uniform float wave_speed  = 0.25;
-uniform float wave_scale  = 5.0;
-void fragment() {
-	vec2 uv   = UV * wave_scale;
-	float w   = sin(uv.x + TIME * wave_speed) * cos(uv.y + TIME * wave_speed * 0.7) * 0.04;
-	ALBEDO    = water_color.rgb;
-	ALPHA     = clamp(water_color.a + w, 0.3, 0.85);
-	ROUGHNESS = 0.05;
-	METALLIC  = 0.2;
-	SPECULAR  = 1.0;
-	NORMAL    = vec3(sin(uv.x + TIME * wave_speed) * 0.08, 1.0, cos(uv.y + TIME * wave_speed * 0.7) * 0.08);
-}
-"""
 	var m := ShaderMaterial.new()
-	m.shader = sh
+	m.shader = PS2_WATER_SHADER
+	m.set_shader_parameter("water_color", Vector4(0.08, 0.38, 0.65, 0.6))
+	m.set_shader_parameter("wave_speed", 0.25)
+	m.set_shader_parameter("wave_scale", 5.0)
 	return m
 
 
 static func cave_mat(tint: Color) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode cull_disabled;
-uniform sampler2D cave_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
-uniform float tile_scale = 4.0;
-varying vec3 world_pos;
-varying vec3 world_normal;
-void vertex() {
-	world_pos    = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
-}
-void fragment() {
-	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
-	// Triplanar, like the wall shader: a top-down projection alone smears into
-	// streaks on steep cave surfaces (tunnel arches, chamber walls).
-	vec3 blend = pow(abs(world_normal), vec3(4.0));
-	blend /= (blend.x + blend.y + blend.z);
-	vec3 tex_x = texture(cave_tex, world_pos.zy / tile_scale).rgb;
-	vec3 tex_y = texture(cave_tex, world_pos.xz / tile_scale).rgb;
-	vec3 tex_z = texture(cave_tex, world_pos.xy / tile_scale).rgb;
-	ALBEDO = (tex_x * blend.x + tex_y * blend.y + tex_z * blend.z) * tint.rgb;
-}
-"""
 	var m := ShaderMaterial.new()
-	m.shader = sh
-	m.set_shader_parameter("cave_tex", _CAVE_TEX)
-	m.set_shader_parameter("tint", tint)
+	m.shader = PS2_WORLD_SHADER
+	m.set_shader_parameter("albedo_tex", _CAVE_TEX)
+	# Triplanar: a top-down projection alone smears into streaks on steep cave
+	# surfaces (tunnel arches, chamber walls).
+	m.set_shader_parameter("projection", PROJECTION_TRIPLANAR)
+	m.set_shader_parameter("tile_scale", 4.0)
+	m.set_shader_parameter("tint", Vector3(tint.r, tint.g, tint.b))
+	m.set_shader_parameter("dir_light_scale", 0.0)   # no sun underground
+	m.set_shader_parameter("ambient_scale", CAVE_AMBIENT)
 	return m
 
 
-# Default grass look keeps its green boost; biome textures from world.bin
-# render untinted.
+# Default grass look keeps its green boost.
 const _GRASS_TINT := Color(0.85, 1.2, 0.75)
 
 
-static func surface_mat(color: Color, tex: Texture2D = _GRASS_TEX, top_tint: Color = _GRASS_TINT, tile_size: float = 66.0) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode cull_disabled;
-uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, repeat_enable;
-uniform float tile_scale = 2.0;
-uniform vec4 albedo_bottom: source_color = vec4(0.25, 0.22, 0.20, 1.0);
-uniform vec3 top_tint = vec3(0.85, 1.2, 0.75);
-
-varying vec3 world_pos;
-
-void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-
-void fragment() {
-	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
-	vec4 tex = texture(albedo_texture, world_pos.xz / tile_scale);
-	ALBEDO = FRONT_FACING ? tex.rgb * top_tint : albedo_bottom.rgb;
-}
-"""
-	var mat := ShaderMaterial.new()
-	mat.shader = sh
-	mat.set_shader_parameter("albedo_texture", tex)
-	mat.set_shader_parameter("top_tint",       Vector3(top_tint.r, top_tint.g, top_tint.b))
-	mat.set_shader_parameter("tile_scale",     tile_size)
-	mat.set_shader_parameter("albedo_bottom",  Color(0.25, 0.22, 0.20))
-	return mat
-
-
-# Shared by every wall type (one Shader, one compile); each type only gets
-# its own ShaderMaterial for its texture.
-static var _wall_shader: Shader
-
-
-static func wall_mat(texture: Texture2D = _CAVE_TEX, tint: Color = Color(1.0, 1.0, 1.0, 1.0)) -> ShaderMaterial:
-	if _wall_shader == null:
-		_wall_shader = Shader.new()
-		_wall_shader.code = _WALL_SHADER_CODE
+static func surface_mat(tex: Texture2D = _GRASS_TEX, top_tint: Color = _GRASS_TINT, tile_size: float = 66.0) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
-	m.shader = _wall_shader
-	m.set_shader_parameter("wall_tex", texture)
-	m.set_shader_parameter("tint", tint)
+	m.shader = PS2_WORLD_SHADER
+	m.set_shader_parameter("albedo_tex", tex)
+	m.set_shader_parameter("projection", PROJECTION_TOP_DOWN)
+	m.set_shader_parameter("tile_scale", tile_size)
+	m.set_shader_parameter("tint", Vector3(top_tint.r, top_tint.g, top_tint.b))
+	# Undersides (seen from caves below) are a flat earth colour.
+	m.set_shader_parameter("flat_backface", true)
+	m.set_shader_parameter("backface_color", Vector3(0.25, 0.22, 0.20))
 	return m
 
 
-const _WALL_SHADER_CODE := """
-shader_type spatial;
-uniform sampler2D wall_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 1.0);
-uniform float tile_scale = 2.0;
-varying vec3 world_pos;
-varying vec3 world_normal;
-void vertex() {
-	world_pos    = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
-}
-void fragment() {
-	// Triplanar, world-space sampling: an OBB wall's own UVs would stretch the
-	// texture to fit each box's size/rotation, so tile from world position
-	// instead — every wall gets the same on-the-ground texel density and the
-	// side faces stay aligned to the wall regardless of its yaw.
-	vec3 blend = abs(world_normal);
-	blend /= (blend.x + blend.y + blend.z);
-	// Side faces map image-v to -world Y so the texture's top points up on
-	// both X and Z facing walls (directional textures like vines climb).
-	vec3 tex_x = texture(wall_tex, vec2(world_pos.z, -world_pos.y) / tile_scale).rgb;
-	vec3 tex_y = texture(wall_tex, world_pos.xz / tile_scale).rgb;
-	vec3 tex_z = texture(wall_tex, vec2(world_pos.x, -world_pos.y) / tile_scale).rgb;
-	ALBEDO = (tex_x * blend.x + tex_y * blend.y + tex_z * blend.z) * tint.rgb;
-}
-"""
+# Fallback for walls whose type has no material. Each wall type is a
+# ShaderMaterial .tres on ps2_world.gdshader under res://assets/materials/walls/
+# (wall_types.json "material").
+static func wall_mat(texture: Texture2D = _CAVE_TEX) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = PS2_WORLD_SHADER
+	m.set_shader_parameter("albedo_tex", texture)
+	m.set_shader_parameter("projection", PROJECTION_TRIPLANAR)
+	m.set_shader_parameter("tile_scale", 2.0)
+	return m
 
 
-# Biome textures repeat this many times across each chunk edge.
-const BIOME_TEX_REPEATS := 8
+# Per-cell terrain textures (world_data.gd, terrain_cells.gdshaderinc): every
+# texture of the cells file's list, resized to one size, as one array.
+const CELL_TEX_SIZE := 256
+const CELL_TEX_MAX  := 64   # terrain_cells.gdshaderinc's cell_tile[] size
 
 
-static func biome_surface_mat(biome_id: int, biomes: Array, chunk_size: float) -> ShaderMaterial:
-	var mat_name := "grassland"
-	for bdef in biomes:
-		if (bdef as Dictionary)["id"] == biome_id:
-			mat_name = (bdef as Dictionary).get("material", "grassland") as String
-			break
-	# Newer world.bin files store a texture path here instead of a name.
-	if mat_name.begins_with("res://"):
-		var tex := _resolve_biome_texture(mat_name)
+static func cell_texture_array(paths: Array) -> Texture2DArray:
+	var images: Array[Image] = []
+	for path in paths:
+		var tex := resolve_texture(path as String)
+		var img: Image
 		if tex != null:
-			if tex == _GRASS_TEX:
-				return surface_mat(Color.WHITE)
-			return surface_mat(Color.WHITE, tex, Color.WHITE, chunk_size / BIOME_TEX_REPEATS)
-		push_warning("WorldShaders: biome %d texture not found: %s" % [biome_id, mat_name])
-	var color := Color(0.35, 0.52, 0.28)
-	match mat_name:
-		"grassland":    color = Color(0.35, 0.52, 0.28)
-		"forest":       color = Color(0.18, 0.38, 0.16)
-		"elven_floor":  color = Color(0.25, 0.48, 0.32)
-		"slime_ground": color = Color(0.28, 0.50, 0.18)
-		"desert_sand":  color = Color(0.78, 0.68, 0.45)
-		"snow":         color = Color(0.88, 0.90, 0.93)
-		"swamp_mud":    color = Color(0.28, 0.32, 0.18)
-	return surface_mat(color)
+			img = tex.get_image()
+			if img.is_compressed():
+				img.decompress()
+			img.convert(Image.FORMAT_RGBA8)
+			img.resize(CELL_TEX_SIZE, CELL_TEX_SIZE, Image.INTERPOLATE_BILINEAR)
+		else:
+			push_warning("WorldShaders: cell texture not found: %s" % path)
+			img = Image.create_empty(CELL_TEX_SIZE, CELL_TEX_SIZE, false, Image.FORMAT_RGBA8)
+			img.fill(Color.MAGENTA)
+		img.generate_mipmaps()
+		images.append(img)
+	var arr := Texture2DArray.new()
+	arr.create_from_images(images)
+	return arr
 
 
-# The editor's asset tree doesn't always match this project's, so if the
-# exact path is missing, look for the same file stem under the usual texture
-# folders with any common image extension.
-static func _resolve_biome_texture(path: String) -> Texture2D:
+# `base` (a surface_mat) with chunk cells painted on: `cells` holds one byte
+# per cell, row by row, for a chunk of `cells_n`² cells at `origin`.
+static func cell_surface_mat(base: ShaderMaterial, cells: PackedByteArray, cells_n: int, origin: Vector2,
+		cell_size: float, tex_array: Texture2DArray, tiles: PackedFloat32Array) -> ShaderMaterial:
+	var mat := base.duplicate() as ShaderMaterial
+	var index := ImageTexture.create_from_image(Image.create_from_data(cells_n, cells_n, false, Image.FORMAT_R8, cells))
+	mat.set_shader_parameter("use_cells",   true)
+	mat.set_shader_parameter("cell_index",  index)
+	mat.set_shader_parameter("cell_tex",    tex_array)
+	mat.set_shader_parameter("cell_tile",   tiles)
+	mat.set_shader_parameter("cell_origin", origin)
+	mat.set_shader_parameter("cell_size",   cell_size)
+	return mat
+
+
+# Surface textures (painted cells, walls) all live in TEXTURE_DIR.
+# A path may be res://-absolute, relative to res://assets
+# ("textures/grass.png") or a bare file name ("grass.png", "grass"). Older
+# worlds name e.g. res://assets/city_ph.png, so if the exact path is missing,
+# look for the same file stem in TEXTURE_DIR with any common image extension.
+const TEXTURE_DIR := "res://assets/textures"
+
+
+static func resolve_texture(path: String) -> Texture2D:
+	if not path.begins_with("res://"):
+		path = "res://assets/" + path if path.contains("/") else TEXTURE_DIR.path_join(path)
 	var tex := _load_texture(path)
 	if tex != null:
 		return tex
 	var stem := path.get_file().get_basename()
-	for dir in [path.get_base_dir(), "res://assets", "res://assets/textures"]:
+	for dir in [TEXTURE_DIR, path.get_base_dir()]:
 		for ext in ["png", "jpg", "jpeg", "webp"]:
 			tex = _load_texture("%s/%s.%s" % [dir, stem, ext])
 			if tex != null:
@@ -195,7 +143,7 @@ static func _load_texture(path: String) -> Texture2D:
 		if tex != null:
 			return tex
 	# Not imported yet (dropped in while the editor wasn't scanning): read the
-	# raw image so the biome still renders.
+	# raw image so the texture still renders.
 	var img := Image.load_from_file(path)
 	if img == null or img.is_empty():
 		return null

@@ -26,6 +26,12 @@ signal dialog_options(npc_net_id: int, options: Array)
 signal item_inspected(container_def_id: int, contents: Array)
 signal chest_result(chest_net_id: int, result: int)
 signal character_deleted(result: int)
+signal character_list(ok: bool, characters: Array)
+signal character_created(result: int)
+signal player_character_synced(net_id: int, char_id: int)
+signal appearance_received(char_id: int, race: int, color: Color)
+signal auto_action_changed(on: bool)
+signal skill_up(skill: int, level: int)
 
 const HOST     = "stonegaze.link"
 const PORT     = 7777
@@ -37,10 +43,16 @@ var _peer: ENetPacketPeer
 # can't be opened until the old one's disconnect has actually completed.
 var _reconnect_on_disconnect := false
 
-func _ready() -> void:
+# Called by the game scene (main.gd), not on autoload, so other scenes in this
+# project (world_editor) don't dial the server. A no-op once the host exists:
+# the reloaded scene after logout() keeps the connection logout() reopened.
+func connect_to_server() -> void:
+	if _host != null:
+		return
 	_host = ENetConnection.new()
 	if _host.create_host(1, CHANNELS) != OK:
 		push_error("Network: failed to create ENet host")
+		_host = null
 		return
 	_peer = _host.connect_to_host(HOST, PORT, CHANNELS, 0)
 
@@ -185,6 +197,31 @@ func _parse(data: PackedByteArray) -> void:
 			action_windup.emit(data.decode_u32(1), data[5], data.decode_float(6))
 		0x26: # DeleteCharacterResponse: result(u8) — requesting peer only
 			character_deleted.emit(data[1])
+		0x2C: # CharacterList: ok(u8, 0 = login expired) count(u8) [id(u32) name(str) race(u8) experience(u32) skin_color(u32)]×count — requesting peer only
+			var _cl_chars: Array = []
+			var _cl_offset := 3
+			for i in data[2]:
+				var _cl_name_len := data[_cl_offset + 4]
+				var _cl_after := _cl_offset + 5 + _cl_name_len
+				_cl_chars.append({
+					"id": data.decode_u32(_cl_offset),
+					"name": data.slice(_cl_offset + 5, _cl_after).get_string_from_utf8(),
+					"race": data[_cl_after],
+					"experience": data.decode_u32(_cl_after + 1),
+					"skin_color": data.decode_u32(_cl_after + 5),
+				})
+				_cl_offset = _cl_after + 9
+			character_list.emit(data[1] != 0, _cl_chars)
+		0x2E: # CreateCharacterResponse: result(u8) — requesting peer only
+			character_created.emit(data[1])
+		0x30: # PlayerCharacter: net_id(u32) char_id(u32) — when a player unit enters view (own included), after its spawn
+			player_character_synced.emit(data.decode_u32(1), data.decode_u32(5))
+		0x32: # Appearance: char_id(u32) race(u8) skin_color(u32, 0xRRGGBBAA) — requesting peer only, nothing for an unknown id
+			appearance_received.emit(data.decode_u32(1), data[5], Color.hex(data.decode_u32(6)))
+		0x2A: # AutoActionState: on(u8) — owning peer only, whenever auto action starts or stops
+			auto_action_changed.emit(data[1] != 0)
+		0x33: # SkillUp: skill(u8, SkillId) level(u8) — this peer only; hud.gd words it
+			skill_up.emit(data[1], data[2])
 
 # SpawnUnit record at `o`: net_id(u32) unit_type(u8) variant(u8) x y z (f32×3) anim_state(u8) radius(f32) height(f32)
 func _emit_unit_spawned(data: PackedByteArray, o: int) -> void:

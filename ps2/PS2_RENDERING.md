@@ -308,7 +308,14 @@ classic compromise.
 
 ## 8. In gaze_client (`res://ps2/`)
 
-Press **F9** in game to toggle. Turning it off restores every original material and setting.
+PS2 is the only look: every material the game draws with is a PS2 one from the moment it loads, and nothing is converted at runtime. The screen output (448 lines, dither, flicker filter) is always on in the game; the world editor keeps it off.
+
+Where the PS2 materials come from (`ps2_materials.gd` builds them from Godot material settings):
+
+- **Imported models** (`.glb`, `.obj`, ...): the `addons/ps2_import` plugin converts each surface's material and runs the mesh through `ps2_mesh.gd` at import time. Author the look in Blender / the import dock as usual (albedo, colour, transparency, cull, emission, metallic and roughness become sphere-map shine); changing the conversion needs a reimport (touch the `.import` files and run `godot --headless --import`).
+- **Scenes with their own materials** (particle effects): converted once with `ps2/tools/convert_resources.gd`; a particle texture's paletted copy is saved beside it as `<name>.ps2.res`. New particle effects need the same run.
+- **World:** `WorldShaders` returns `ps2_world` / `ps2_water` materials, the wall types are `.tres` files on `ps2_world.gdshader` (`assets/materials/walls/`), and `world_data.gd` builds terrain, wall and water geometry through `ps2_mesh.gd` on its worker threads.
+- **Game code:** `Ps2Materials.model()` on a configured `StandardMaterial3D` (entity tints), `blended()` / `cut_out()` for transparency changes (SkinTint, the portal).
 
 | File | PS2 part | Sections |
 |---|---|---|
@@ -321,26 +328,28 @@ Press **F9** in game to toggle. Turning it off restores every original material 
 | `ps2_post.gdshader` | DTHE 4×4 dither + 5-bit truncate, CRTC flicker filter | §6.5 |
 | `ps2_mesh.gd` | Geometry path: VIF quantisation (s16 pos, s8 normal, fixed-point UV, u8 colour, 2 bones / 8-bit weights), stripify with ADC restarts, VU1 batches (restart pair, plus a degenerate triangle for odd parity), GS-style decode with no index buffer | §2, §7 |
 | `ps2_common.gdshaderinc` `ps2_snap()` | GS 12.4 fixed-point vertex positions (1/16 px of the 448-line grid) | §3.2 |
-| `ps2.gd` (autoload `Ps2`) | The EE side: per-frame light upload, light selection, material swap, 448-line render | §1, §4.2 |
+| `ps2.gd` (autoload `Ps2`) | The EE side: per-frame light upload, light selection, 448-line render | §1, §4.2 |
+| `ps2_materials.gd` | PS2 materials from Godot material settings; metallic/roughness → sphere-map shine (`ps2_env.png`) | §5, §6.3 |
+| `addons/ps2_import`, `tools/convert_resources.gd` | Converting assets ahead of time (import, one-off scenes) | — |
 
 How the engine pieces stand in:
 
 - **448 lines:** `Viewport.scaling_3d_scale = 448 / window height`, bilinear upscale.
-- **No tonemapper:** the Environment switches to Linear tonemap, exposure 1, while on.
+- **No tonemapper:** the Environment uses Linear tonemap, exposure 1.
 - **Godot fog is disabled** on PS2 materials (`fog_disabled`). Fog is per vertex instead.
 - **Shadows (a non-PS2 addition):** the sun's Godot shadow map is layered on top of the PS2 lighting. Each pixel finishes two PS2 colours, `shade` (no sun) and `lit` (with sun), and outputs `EMISSION = shade`, `ALBEDO = lit − shade`. A custom `light()` sets `DIFFUSE_LIGHT` to the sun's shadow factor, so Godot's `ALBEDO·DIFFUSE + EMISSION` becomes exactly `mix(shade, lit, shadow)`. In full sun it is identical to the pure PS2 result. `shadow_strength` in `ps2.gd` sets how strongly shadows apply (0 turns them off). Caves still drop the sun as a zone light, and any object can be darkened with `mi.set_instance_shader_parameter("ps2_sun_scale", 0.0)`. The PS2-authentic alternative would be blob or projected-texture shadows.
 - **Godot lighting (a non-PS2 option, on by default):** with `godot_lighting` in `ps2.gd`, the PS2 light set is skipped. The fragment outputs the fogged texture as `ALBEDO`, plus the scene ambient and fog colour as `EMISSION` (`ps2_godot_surface`). `light()` then adds every Godot light as per-pixel Lambert with full shadows. Omni lights keep the `point_wrap` N·L wrap and `godot_point_gain`. Geometry, textures, fog, resolution and dither stay PS2.
 - **Skinning:** Godot skins before `vertex()`, so nothing extra is needed. For the PS2 budget, export with Blender's *Limit Total* = 2 bones per vertex.
-- **Particles** (`GPUParticles3D`, `CPUParticles3D`) are converted too. Still not converted: `Sprite3D`, `Label3D`, and unshaded or billboard materials on regular meshes (the moon).
+- **Particles** (`GPUParticles3D`, `CPUParticles3D`) use PS2 particle materials too. Not PS2: `Sprite3D`, `Label3D`, and unshaded or billboard materials on regular meshes (the moon, projectile orbs).
 
-**Every mesh goes through the PS2 geometry path:** while PS2 mode is on, models, terrain chunks, walls, water and blend-shape meshes are all rebuilt by `ps2_mesh.gd` and swapped in, with the originals restored on F9. The work runs on `WorkerThreadPool`: the main thread only snapshots the arrays and builds the final mesh, within 2 ms per frame.
+**Every mesh goes through the PS2 geometry path** (`ps2_mesh.gd`), ahead of time: imported models and blend-shape meshes at import, terrain chunks and walls on `world_data.gd`'s worker threads as they're built, water when it's spawned. Terrain keeps its original indexed arrays for collision. Meshes made by game code (primitives) are drawn as they are.
 
-- **Models** quantise around their own centre with one scale per mesh. Imported meshes are converted once and shared between instances.
+- **Models** quantise around their own centre with one scale per mesh.
 - **Terrain and water** quantise on a **world-aligned 1/64-unit grid** (s16 relative to each chunk, ±512 units), so neighbouring chunks round their shared border to the same points and never crack. This is the PS2 terrain approach: chunk-relative s16 coordinates on a common grid.
 - **Large primitives** (water planes, waterfall boxes) are first cut into 4-unit cells. The GS clipped nothing, so big polygons had to be split to stay in the guard band, and per-vertex fog and lighting need the vertices.
 - **Blend shapes** (morph targets) get the same quantisation and stream order as their base mesh.
 
-With `log_mesh_stats` on, each rebuild prints a line like `684 tris → 342 strips (avg 2.0 tris), 1368 stream verts (2.00/tri), 19 VU1 batches, 22.3 KB VIF`. Stream verts per triangle is the number PS2 developers optimised: 1.0 is the ideal (one long strip; terrain grids reach about 1.09) and 3.0 is plain triangles. Most of the visible difference comes from the 2-bone skinning limit and the 8-bit normals. Position and UV precision loss is below a pixel by design.
+`ps2_mesh.gd` works out a stats line per surface it builds (the `stats` of `_build()`), like `684 tris → 342 strips (avg 2.0 tris), 1368 stream verts (2.00/tri), 19 VU1 batches, 22.3 KB VIF`. Stream verts per triangle is the number PS2 developers optimised: 1.0 is the ideal (one long strip; terrain grids reach about 1.09) and 3.0 is plain triangles. Most of the visible difference comes from the 2-bone skinning limit and the 8-bit normals. Position and UV precision loss is below a pixel by design.
 
 Tuning values (gains, fog distances and colours, resolution, dither, flicker) are the variables at the top of `ps2.gd`.
 
@@ -352,6 +361,6 @@ Each piece above has a natural home in the Forward+ renderer (`servers/rendering
 2. **Light selection → C++ per instance.** Move "pick the N strongest point lights for this object" from `ps2.gd` into the instance setup, so each object gets its own set, which is exactly what the EE did.
 3. **Shaders → a built-in `ps2` shading mode.** Add a render mode (for example `render_mode ps2;`) to the scene shader template that swaps the per-pixel light loop for the `ps2_light()` vertex path, so no material swap is needed.
 4. **Dither and flicker → a post step.** Add them to the tonemap/output pass, or as a `CompositorEffect` first.
-5. **Material swap → importer default.** Once the mode exists, `ps2.gd`'s conversion becomes an import option instead of runtime work.
+5. **Material conversion → importer default.** Already an import step here (`addons/ps2_import`); once the mode exists it becomes an import option of the engine.
 
 Prototype each step here in GDScript and `.gdshader` first, where there's no compile wait, and port it once it looks right.

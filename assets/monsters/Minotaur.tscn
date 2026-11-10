@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" uid="uid://dk3k67pgda6dc" path="res://assets/meshes/minotaur.obj" id="1"]
+
+[node name="Minotaur" type="Node3D"]
+
+[node name="Mesh" parent="." instance=ExtResource("1")]
+
+[node name="HitPoint" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.07, 1.32, 0.11)

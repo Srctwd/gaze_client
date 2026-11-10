@@ -1,0 +1,24 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://cgin3xfgreqa5"]
+
+[ext_resource type="Shader" uid="uid://bn8c6wevq64kl" path="res://ps2/ps2_world.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" uid="uid://x7lgp04bepm8" path="res://assets/textures/black_marble_wall.png" id="2_tex"]
+[ext_resource type="Texture2D" uid="uid://c7tkdo0nml07j" path="res://ps2/ps2_env.png" id="3_env"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/use_cells = false
+shader_parameter/cell_tile = PackedFloat32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+shader_parameter/cell_origin = Vector2(0, 0)
+shader_parameter/cell_size = 0.5
+shader_parameter/albedo_tex = ExtResource("2_tex")
+shader_parameter/projection = 2
+shader_parameter/tile_scale = 2.0
+shader_parameter/tint = Vector3(1, 1, 1)
+shader_parameter/flat_backface = false
+shader_parameter/backface_color = Vector3(0.25, 0.22, 0.2)
+shader_parameter/dir_light_scale = 1.0
+shader_parameter/ambient_scale = 1.0
+shader_parameter/env_tex = ExtResource("3_env")
+shader_parameter/env_metal = 0.0
+shader_parameter/env_gloss = 0.0

@@ -19,8 +19,6 @@ const _NODE_SIZE  := Vector2(100, 110)  # footprint: icon + name label stacked u
 const _ICON_SIZE  := Vector2(64, 64)
 const _BG_COLOR   := Color(0.0, 0.0, 0.0, 1.0)
 const _STAR_COUNT := 220
-const _ARROW_LEN   := 22.0
-const _ARROW_WIDTH := 16.0
 
 # Canvas spacing at zoom 1: distance between neighboring columns' node
 # centers, and between tiers.
@@ -61,14 +59,26 @@ var _containers: Dictionary = {}  # node_id -> VBoxContainer (icon + label, posi
 var _placeholder_icon: Texture2D
 var _row_frac: Dictionary = {}  # node_id -> float (0 = top, 1 = bottom)
 var _col_frac: Dictionary = {}  # node_id -> float (0..1)
-var _centers: Dictionary = {}   # node_id -> Vector2 (local to _canvas)
-var _edges: Array = []          # Array[Dictionary] of {child, parent, optional}
 var _pos_override: Dictionary = {}  # node_id -> Vector2 canvas top-left, set while selection mode compacts tier 0
 var _needs_fit: bool = false    # _fit_view() pending until _tree_area has a real size
 
 var _points_available: int = 0
 var _learned: Dictionary = {}  # node_id -> true
 var _close_btn: Button
+
+# Talent detail screen — opened by clicking any talent: its description, what
+# it requires (✓ met / ✗ not) and what it unlocks, plus the Learn button.
+var _detail: Control
+var _detail_title: Label
+var _detail_desc: Label
+var _detail_requires: RichTextLabel
+var _detail_requires_heading: Label  # hidden with the list for a talent with no requirements
+var _detail_unlocks: RichTextLabel
+var _detail_unlocks_heading: Label  # hidden with the list when nothing needs this talent
+var _detail_learn: Button
+var _detail_id: int = -1
+var _icons: Dictionary = {}  # node_id -> Texture2D (its icon or the placeholder), shared with the detail screen
+const _DETAIL_ICON := 24
 var _expect_open: bool = false     # true after we explicitly requested a sync (FrozenStarlight interact)
 var _selection_mode: bool = false  # true while picking a starting talent during character creation (no network involved)
 
@@ -144,15 +154,100 @@ func _ready() -> void:
 	_close_btn.pressed.connect(_close)
 	vbox.add_child(_close_btn)
 
+	_build_detail(root)
+
 	visible = false
 	Network.talent_synced.connect(_on_talent_synced)
+
+
+func _build_detail(root: Control) -> void:
+	# Dims the tree and swallows clicks so nothing behind it is pressed.
+	_detail = ColorRect.new()
+	(_detail as ColorRect).color = Color(0, 0, 0, 0.6)
+	_detail.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_detail.mouse_filter = Control.MOUSE_FILTER_STOP
+	_detail.visible = false
+	root.add_child(_detail)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_detail.add_child(center)
+
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.06, 0.1, 0.97)
+	style.border_color = Color(0.5, 0.5, 0.6)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(18)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.custom_minimum_size = Vector2(440, 0)
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	panel.add_child(vbox)
+
+	_detail_title = Label.new()
+	_detail_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_detail_title.add_theme_font_size_override("font_size", 26)
+	vbox.add_child(_detail_title)
+
+	_detail_desc = Label.new()
+	_detail_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail_desc.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+	vbox.add_child(_detail_desc)
+
+	vbox.add_child(HSeparator.new())
+	_detail_requires_heading = _detail_heading("Requires")
+	vbox.add_child(_detail_requires_heading)
+	_detail_requires = _detail_list()
+	vbox.add_child(_detail_requires)
+	_detail_unlocks_heading = _detail_heading("Unlocks")
+	vbox.add_child(_detail_unlocks_heading)
+	_detail_unlocks = _detail_list()
+	vbox.add_child(_detail_unlocks)
+	vbox.add_child(HSeparator.new())
+
+	var buttons := HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons.add_theme_constant_override("separation", 16)
+	vbox.add_child(buttons)
+
+	_detail_learn = Button.new()
+	_detail_learn.custom_minimum_size = Vector2(140, 36)
+	_detail_learn.pressed.connect(_on_detail_learn)
+	buttons.add_child(_detail_learn)
+
+	var back := Button.new()
+	back.text = "Back"
+	back.custom_minimum_size = Vector2(140, 36)
+	back.pressed.connect(_close_detail)
+	buttons.add_child(back)
+
+
+func _detail_heading(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 18)
+	return label
+
+
+func _detail_list() -> RichTextLabel:
+	var list := RichTextLabel.new()
+	list.bbcode_enabled = true
+	list.fit_content = true
+	list.scroll_active = false
+	list.custom_minimum_size = Vector2(400, 0)
+	return list
 
 
 # Reads mouse state directly rather than a Control's gui_input, and never
 # calls set_input_as_handled() — talent icon buttons still get every event
 # normally afterward, this just also watches the same events for panning.
 func _input(event: InputEvent) -> void:
-	if not visible:
+	if not visible or _detail.visible:
+		_dragging = false
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed and _tree_area.get_global_rect().has_point(event.position):
@@ -221,7 +316,6 @@ func _build_tree_area() -> void:
 
 	_canvas = Control.new()
 	_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_canvas.draw.connect(_draw_edges)
 	_tree_area.add_child(_canvas)
 
 	var tiers: Dictionary = {}  # tier -> Array of talent dicts, in file order
@@ -304,6 +398,7 @@ func _build_tree_area() -> void:
 		var icon_btn := TextureButton.new()
 		var icon_path: String = _ICON_DIR + t.key + ".png"
 		icon_btn.texture_normal = load(icon_path) if ResourceLoader.exists(icon_path) else _placeholder_icon
+		_icons[t.id] = icon_btn.texture_normal
 		icon_btn.ignore_texture_size = true
 		icon_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 		icon_btn.custom_minimum_size = _ICON_SIZE
@@ -332,12 +427,6 @@ func _build_tree_area() -> void:
 		label.custom_minimum_size = Vector2(_NODE_SIZE.x, 0)
 		label_bg.add_child(label)
 		_labels[t.id] = label
-
-	_edges.clear()
-	for t in _tree.talents:
-		var edges: Dictionary = _tree.prereq_edges(t.prereq)  # parent_id -> optional
-		for parent_id in edges:
-			_edges.append({"child": t.id, "parent": parent_id, "optional": edges[parent_id]})
 
 	_canvas.size = Vector2(_grid_cols * _COL_SPACING, _max_tier * _ROW_SPACING + _NODE_SIZE.y)
 	_layout()
@@ -389,10 +478,6 @@ func _layout() -> void:
 			_col_frac[node_id] * _grid_cols * _COL_SPACING - _NODE_SIZE.x * 0.5,
 			_row_frac[node_id] * _max_tier * _ROW_SPACING))
 		_containers[node_id].position = top_left
-		# Edges connect at the icon's center, not the whole container's (which
-		# includes the label below it).
-		_centers[node_id] = top_left + Vector2(_NODE_SIZE.x * 0.5, _ICON_SIZE.y * 0.5)
-	_canvas.queue_redraw()
 
 
 # Zooms out to fit the visible nodes (down to _FIT_MIN_ZOOM) and centers
@@ -423,36 +508,6 @@ func _fit_view() -> void:
 		pos.y = area.y - bounds.end.y * zoom
 	_canvas.scale = Vector2.ONE * zoom
 	_canvas.position = pos
-
-
-func _draw_edges() -> void:
-	for edge in _edges:
-		var child_id: int = edge.child
-		var parent_id: int = edge.parent
-		if not (_centers.has(child_id) and _centers.has(parent_id)):
-			continue
-		if not (_containers[child_id].visible and _containers[parent_id].visible):
-			continue
-		var learned := _learned.has(child_id) and _learned.has(parent_id)
-		var color := Color(0.6, 1.0, 0.6) if learned else Color(0.5, 0.5, 0.5)
-
-		# Mandatory prereqs arrow forward, prereq -> dependent ("this unlocks
-		# that"); optional prereqs arrow backward, dependent -> prereq ("this
-		# can also use that") — matches how the tree is meant to read.
-		var from: Vector2 = _centers[child_id] if edge.optional else _centers[parent_id]
-		var to: Vector2 = _centers[parent_id] if edge.optional else _centers[child_id]
-		_canvas.draw_line(from, to, color, 3.0)
-
-		var direction := (to - from).normalized()
-		if direction != Vector2.ZERO:
-			var tip := to - direction * (_ICON_SIZE.y * 0.5 - 6.0)
-			_draw_arrowhead(tip, direction, color)
-
-
-func _draw_arrowhead(tip: Vector2, direction: Vector2, color: Color) -> void:
-	var back := tip - direction * _ARROW_LEN
-	var perp := direction.orthogonal() * (_ARROW_WIDTH * 0.5)
-	_canvas.draw_colored_polygon([tip, back + perp, back - perp], color)
 
 
 # Called right before we send a FrozenStarlight InteractRequest, so the
@@ -535,6 +590,7 @@ func _on_talent_synced(points_available: int, learned: Array) -> void:
 
 func _refresh() -> void:
 	_points_label.text = "Points available: %d" % _points_available
+	_refresh_detail()
 	for t in _tree.talents:
 		var btn: TextureButton = _buttons[t.id]
 		var label: Label = _labels[t.id]
@@ -543,9 +599,7 @@ func _refresh() -> void:
 		var color := Color(0.6, 1.0, 0.6) if learned else (Color(1, 1, 1) if available else Color(0.5, 0.5, 0.5))
 		label.text = t.name + (" ✓" if learned else "")
 		label.modulate = color
-		btn.disabled = learned or not available or _points_available <= 0
 		btn.modulate = color
-	_canvas.queue_redraw()
 
 
 func _on_talent_hovered(node_id: int) -> void:
@@ -558,6 +612,105 @@ func _on_talent_unhovered() -> void:
 
 
 func _on_talent_pressed(node_id: int) -> void:
+	_open_detail(node_id)
+
+
+func _open_detail(node_id: int) -> void:
+	var t = _tree.by_id[node_id]
+	_detail_id = node_id
+	_detail_title.text = t.name
+	_detail_desc.text = t.description
+	_refresh_detail()
+	_detail.visible = true
+
+
+func _close_detail() -> void:
+	_detail.visible = false
+	_detail_id = -1
+
+
+# Learn (or Choose, picking the starting talent) — only while it can be had.
+func _refresh_detail() -> void:
+	if _detail_id == -1:
+		return
+	var t = _tree.by_id[_detail_id]
+	var learned: bool = _learned.has(_detail_id)
+	_detail_learn.text = "Choose" if _selection_mode else ("Learned" if learned else "Learn")
+	_detail_learn.disabled = learned or not _tree.requirement_met(t.prereq, _learned) or _points_available <= 0
+	var requires: Array = []
+	_requirement_lines(t.prereq, 0, requires)
+	_write_lines(_detail_requires, requires)
+	_detail_requires_heading.visible = not requires.is_empty()
+	_detail_requires.visible = not requires.is_empty()
+	var unlocks := _unlocks_lines(_detail_id)
+	_write_lines(_detail_unlocks, unlocks)
+	_detail_unlocks_heading.visible = not unlocks.is_empty()
+	_detail_unlocks.visible = not unlocks.is_empty()
+
+
+func _on_detail_learn() -> void:
+	var node_id := _detail_id
+	_close_detail()
+	_learn(node_id)
+
+
+func _mark(met: bool) -> String:
+	return "[color=#99ff99]✓[/color]" if met else "[color=#ff7777]✗[/color]"
+
+
+# A detail-screen line: `prefix` (bbcode: indent, ✓/✗), then talent `icon`'s
+# picture (-1 for none), then `name`.
+func _line(prefix: String, icon: int, name: String) -> Dictionary:
+	return { "prefix": prefix, "icon": icon, "name": name }
+
+
+func _write_lines(list: RichTextLabel, lines: Array) -> void:
+	list.clear()
+	for index in lines.size():
+		var line: Dictionary = lines[index]
+		if index > 0:
+			list.append_text("\n")
+		list.append_text(line.prefix)
+		if line.icon >= 0 and _icons.has(line.icon):
+			list.add_image(_icons[line.icon], _DETAIL_ICON, _DETAIL_ICON)
+			list.append_text(" ")
+		list.append_text(line.name)
+
+
+# One line per requirement; "One of" groups indent their options.
+func _requirement_lines(req: Dictionary, depth: int, lines: Array) -> void:
+	var indent := "    ".repeat(depth)
+	match req.type:
+		"has":
+			var other = _tree.by_id.get(req.node)
+			lines.append(_line("%s%s " % [indent, _mark(_learned.has(req.node))], req.node, other.name if other != null else "?"))
+		"and":
+			for c in req.children:
+				_requirement_lines(c, depth, lines)
+		"or":
+			lines.append(_line("%s%s " % [indent, _mark(_tree.requirement_met(req, _learned))], -1, "One of:"))
+			for c in req.children:
+				_requirement_lines(c, depth + 1, lines)
+		"sum":
+			var have := 0
+			for other in _tree.talents:
+				if req.group in other.tags and _learned.has(other.id):
+					have += 1
+			lines.append(_line("%s%s " % [indent, _mark(have >= req.threshold)], -1, "%d %s talents (%d/%d)" % [req.threshold, req.group, mini(have, req.threshold), req.threshold]))
+		"stat":
+			# Not tracked by the client — the server checks it on Learn.
+			lines.append(_line(indent + "• ", -1, "%d %s" % [req.threshold, req.name]))
+
+
+func _unlocks_lines(node_id: int) -> Array:
+	var lines: Array = []
+	for other in _tree.talents:
+		if node_id in _tree.prereq_nodes(other.prereq):
+			lines.append(_line("", other.id, other.name))
+	return lines
+
+
+func _learn(node_id: int) -> void:
 	var t = _tree.by_id[node_id]
 	if _selection_mode:
 		_selection_mode = false
@@ -566,12 +719,11 @@ func _on_talent_pressed(node_id: int) -> void:
 		visible = false
 		talent_selected.emit(node_id)
 		return
-	print("[talent-debug] pressed id=", node_id, " key=", t.key,
-		" points_available=", _points_available, " disabled=", _buttons[node_id].disabled)
 	Network.send(Protocol.pkt_learn_talent(node_id))
 
 
 func _close() -> void:
+	_close_detail()
 	visible = false
 	if _selection_mode:
 		_selection_mode = false

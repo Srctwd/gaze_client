@@ -1,8 +1,13 @@
 class_name WorldData
 extends RefCounted
 
-const MAGIC := 0x47574C36  # "GWL6"
+const MAGIC    := 0x47574C39  # "GWL9" — GWL8 plus a pillar section (header gains pillar_offset)
+const MAGIC_V8 := 0x47574C38  # "GWL8" — still loads; no pillars
+const MAGIC_V7 := 0x47574C37  # "GWL7" — still loads; its biome material/spawner fields are skipped
+const RampMesh      = preload("res://world/ramp_mesh.gd")
 const WorldShaders  = preload("res://world/world_shaders.gd")
+const Ps2Mesh       = preload("res://ps2/ps2_mesh.gd")
+const Grass         = preload("res://world/grass.gd")
 
 # Preloaded so the exporter includes them (paths come from world.bin at runtime)
 const _PRELOAD_FERN01   = preload("res://assets/meshes/fern01.glb")
@@ -19,9 +24,10 @@ var world_ox    : float = 0.0
 var world_oz    : float = 0.0
 var _chunks     : Array = []
 var _static_objects : Array = []
-var _static_boxes   : Array = []  # OBB walls: {type, x, z, half_x, half_z, rot_y, height, y_offset, openings}
+var _pillars        : Array = []  # upright cylinders: {type, x, z, radius, height, y_offset} (base = terrain under the centre + y_offset)
+var _static_boxes   : Array = []  # OBB walls: {type, x, z, half_x, half_z, rot_y, height, y_offset, low_height, openings} (low_height >= 0: a ramp, see ramp_mesh.gd)
 var _water_rects    : Array = []
-var _biomes         : Array = []  # [{id, name, material, props[]}]
+var _biomes         : Array = []  # [{id, name, props[], prop_weights[]}] — prop scatter only
 var _prop_types     : Array = []
 var _prop_instances : Array = []
 var _biomes_by_id   : Dictionary = {}
@@ -34,16 +40,29 @@ const _PROP_CELL_JITTER := 0.35
 var _material      : Material
 var _mat_cave      : ShaderMaterial
 var _fallback_scene        : PackedScene = null
-var _biome_mat_cache : Dictionary = {}  # biome id -> Material, shared by every streamed chunk
+# Per-cell terrain textures: <world>.cells.bin beside world.bin, written by the
+# world editor and read only here (the server never sees it). A painted
+# chunk's dictionary gets "cells", one byte per cell: 0 = the default grass,
+# k = _cell_paths[k - 1]. See terrain_cells.gdshaderinc.
+const CELLS_MAGIC := 0x31435747  # "GWC1"
+var _cell_paths      : Array = []               # texture path per layer
+var _cell_tiles      := PackedFloat32Array()    # metres per repeat per layer, CELL_TEX_MAX long
+var _cell_array      : Texture2DArray
+var _cell_mat_cache  : Dictionary = {}          # chunk index -> its painted Material
+# Per cell value (0 = unpainted, k = _cell_paths[k - 1]): grows grass blades
+# (a tileable_grass ground, see grass.gd), the ground's metres per texture
+# repeat and whether it's drawn tinted — so blade roots match the terrain.
+var _grass_cell   := PackedByteArray()
+var _grass_tile   := PackedFloat32Array()
+var _grass_tinted := PackedByteArray()
 var _prop_cache      : Dictionary = {}  # prop path -> PackedScene
-const _FALLBACK_PATH := "res://assets/fushi.glb"
-# Wall type id -> ShaderMaterial, built from wall_types.json (id, name, texture
-# path) rather than world.bin's own trailing wall-type table — that table is
-# written by the same in-progress tool producing world.bin's box section and
-# isn't reliable yet (e.g. every id currently points at the same texture in
-# the file, while wall_types.json already distinguishes them correctly).
+const _FALLBACK_PATH := "res://assets/meshes/fushi.glb"
+# Wall type id -> Material, loaded from wall_types.json's "material" (a .tres
+# on res://ps2/ps2_world.gdshader) rather than world.bin's own trailing
+# wall-type table — that table is written by the editor and isn't the source
+# of truth; wall_types.json is.
 const _WALL_TYPES_PATH := "res://wall_types.json"
-var _wall_mats        : Dictionary = {}
+var _wall_mats        : Dictionary = {}  # id -> Material
 # Wall type id -> jitter scale, from wall_types.json's "jitter" (1 = the full
 # _WALL_JITTER / _WALL_JITTER_Y, 0 = flat, e.g. cut marble). Missing = 1.
 var _wall_jitter      : Dictionary = {}
@@ -58,6 +77,9 @@ var _wall_props       : Dictionary = {}
 # An id in neither falls back to _FALLBACK_PATH instead of the wrong mesh/scale.
 const _OBJECT_TYPES_PATH := "res://object_types.json"
 var _static_type_defs : Dictionary = {}
+# Pillars: type is a wall type id (drawn in its _wall_mats material), with
+# PILLAR_SIDES sides — the world editor matches it.
+const PILLAR_SIDES := 12
 
 
 func load(path: String) -> bool:
@@ -66,8 +88,10 @@ func load(path: String) -> bool:
 		push_error("WorldData: cannot open " + path)
 		return false
 
-	if f.get_32() != MAGIC:
-		push_error("WorldData: unsupported world format in " + path + " — only GWL6 is supported")
+	var magic := f.get_32()
+	var legacy_biomes := magic == MAGIC_V7  # GWL7 biome records carry material + spawner fields
+	if magic != MAGIC and magic != MAGIC_V8 and magic != MAGIC_V7:
+		push_error("WorldData: unsupported world format in " + path + " — only GWL7/GWL8/GWL9 are supported")
 		f.close()
 		return false
 	chunk_cells       = f.get_32()
@@ -78,6 +102,7 @@ func load(path: String) -> bool:
 	var raw_ocz       := f.get_32()
 	var static_offset := f.get_32()
 	var box_offset    := f.get_32()
+	var pillar_offset := f.get_32() if magic == MAGIC else 0
 	origin_cx = raw_ocx if raw_ocx < 0x80000000 else int(raw_ocx) - 0x100000000
 	origin_cz = raw_ocz if raw_ocz < 0x80000000 else int(raw_ocz) - 0x100000000
 	world_ox = origin_cx * chunk_cells * cell_size
@@ -158,20 +183,16 @@ func load(path: String) -> bool:
 		for _bi in range(bcount):
 			var bid   := f.get_8()
 			var n     := f.get_8(); var bname := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
-			n = f.get_8(); var bmat  := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
+			if legacy_biomes: f.get_buffer(f.get_8())  # material
 			var pc    := f.get_8()
 			var bprops: Array[String] = []
 			var bweights: Array[float] = []
 			for _pi in range(pc):
 				n = f.get_8(); bprops.append(f.get_buffer(n).get_string_from_utf8() if n > 0 else "")
 				bweights.append(f.get_float())
-			# spawner fields (not used on client — read to advance position)
-			n = f.get_8(); var bst := f.get_buffer(n).get_string_from_utf8() if n > 0 else ""
-			var bsi := f.get_float()
-			var bsm  := f.get_8(); var bsp := f.get_float()
-			_biomes.append({ "id": bid, "name": bname, "material": bmat, "props": bprops,
-				"prop_weights": bweights,
-				"spawn_type": bst, "spawn_interval": bsi, "spawn_max": bsm, "spawn_prob": bsp })
+			if legacy_biomes:  # spawner: type(pstr) interval(f32) max(u8) prob(f32)
+				f.get_buffer(f.get_8()); f.get_float(); f.get_8(); f.get_float()
+			_biomes.append({ "id": bid, "name": bname, "props": bprops, "prop_weights": bweights })
 
 	_biomes_by_id.clear()
 	for b in _biomes:
@@ -224,6 +245,7 @@ func load(path: String) -> bool:
 			var brot_y   := f.get_float()
 			var bheight  := f.get_float()
 			var byoffset := f.get_float()
+			var blow     := f.get_float()
 			var openings: Array = []
 			var ocount := f.get_8()
 			for _oi in range(ocount):
@@ -234,7 +256,15 @@ func load(path: String) -> bool:
 				})
 			_static_boxes.append({ "type": btype, "x": bx, "z": bz,
 				"half_x": bhalf_x, "half_z": bhalf_z, "rot_y": brot_y, "height": bheight,
-				"y_offset": byoffset, "openings": openings })
+				"y_offset": byoffset, "low_height": blow, "openings": openings })
+
+	# Pillar section (GWL9) — also located by an explicit offset.
+	_pillars.clear()
+	if pillar_offset > 0:
+		f.seek(pillar_offset)
+		for _i in range(f.get_32()):
+			_pillars.append({ "type": f.get_8(), "x": f.get_float(), "z": f.get_float(),
+				"radius": f.get_float(), "height": f.get_float(), "y_offset": f.get_float() })
 
 	f.close()
 
@@ -242,12 +272,68 @@ func load(path: String) -> bool:
 	_stitch_all_borders("h2")
 	_stitch_all_borders("h3")
 
-	_material      = WorldShaders.surface_mat(Color(0.35, 0.52, 0.28))
+	_material      = WorldShaders.surface_mat()
 	_mat_cave = WorldShaders.cave_mat(Color(0.40, 0.33, 0.25))   # ceiling (h2) and floor (h3) alike
 	_fallback_scene = load(_FALLBACK_PATH)
 	_load_wall_types()
 	_load_object_types()
+	_load_cells(path.get_basename() + ".cells.bin")
+	_init_grass_cells()
 	return true
+
+
+func _init_grass_cells() -> void:
+	_grass_cell.resize(256);   _grass_cell.fill(0)
+	_grass_tile.resize(256);   _grass_tile.fill(66.0)
+	_grass_tinted.resize(256); _grass_tinted.fill(0)
+	_grass_cell[0] = 1     # unpainted ground is surface_mat()'s tileable_grass,
+	_grass_tinted[0] = 1   # tinted, 66 m per repeat
+	for k in mini(_cell_paths.size(), 255):
+		_grass_cell[k + 1] = 1 if (_cell_paths[k] as String).to_lower().contains(Grass.GRASS_TEXTURE_KEY) else 0
+		_grass_tile[k + 1] = _cell_tiles[k] if k < _cell_tiles.size() else 4.0
+
+
+func _load_cells(path: String) -> void:
+	if not FileAccess.file_exists(path):
+		return
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null or f.get_32() != CELLS_MAGIC or f.get_32() != chunk_cells:
+		push_warning("WorldData: ignoring %s (not a cells file for this world)" % path)
+		return
+	_cell_tiles.resize(WorldShaders.CELL_TEX_MAX)
+	_cell_tiles.fill(4.0)
+	for k in range(f.get_8()):
+		_cell_paths.append(f.get_buffer(f.get_16()).get_string_from_utf8())
+		var tile := f.get_float()
+		if k < WorldShaders.CELL_TEX_MAX:
+			_cell_tiles[k] = tile
+	var size := chunk_cells * chunk_cells
+	for _c in range(f.get_32()):
+		var gx := _s32(f.get_32())
+		var gz := _s32(f.get_32())
+		var cells := f.get_buffer(size)
+		var i := chunk_index(Vector2i(gx - origin_cx, gz - origin_cz))
+		if i >= 0:
+			(_chunks[i] as Dictionary)["cells"] = cells
+	if not _cell_paths.is_empty():
+		_cell_array = WorldShaders.cell_texture_array(_cell_paths)
+
+
+static func _s32(v: int) -> int:
+	return v if v < 0x80000000 else v - 0x100000000
+
+
+# Painted texture index under (wx, wz) in chunk `i`, 0 when unpainted.
+func _cell_at(i: int, wx: float, wz: float) -> int:
+	var cells: PackedByteArray = (_chunks[i] as Dictionary).get("cells", PackedByteArray())
+	if cells.is_empty():
+		return 0
+	var size := chunk_cells * cell_size
+	var lx := wx - (world_ox + (i % chunks_x) * size)
+	var lz := wz - (world_oz + int(i / chunks_x) * size)
+	var cx := clampi(floori(lx / cell_size), 0, chunk_cells - 1)
+	var cz := clampi(floori(lz / cell_size), 0, chunk_cells - 1)
+	return cells[cz * chunk_cells + cx]
 
 
 func _load_wall_types() -> void:
@@ -275,23 +361,14 @@ func _load_wall_types() -> void:
 				var probe := scene.instantiate() as Node3D
 				_wall_props[wid] = {"scene": scene, "aabb": _node_aabb(probe, Transform3D.IDENTITY)}
 				probe.free()
-		var path := row.get("texture", "") as String
-		if path.is_empty():
+		var mat_path := row.get("material", "") as String
+		if mat_path.is_empty():
 			continue
-		var tex: Texture2D = null
-		if ResourceLoader.exists(path):
-			tex = load(path) as Texture2D
-		else:
-			# Not imported yet (a texture dropped in while the editor wasn't
-			# scanning): read the raw image so the wall still renders.
-			var img := Image.load_from_file(path)
-			if img != null and not img.is_empty():
-				img.generate_mipmaps()
-				tex = ImageTexture.create_from_image(img)
-		if tex == null:
-			push_error("WorldData: wall type %d texture failed to load: %s" % [wid, path])
+		var mat := load(mat_path) as Material
+		if mat == null:
+			push_error("WorldData: wall type %d material failed to load: %s" % [wid, mat_path])
 			continue
-		_wall_mats[wid] = WorldShaders.wall_mat(tex)
+		_wall_mats[wid] = mat
 
 
 func _load_object_types() -> void:
@@ -350,7 +427,8 @@ func chunk_coords_at(wx: float, wz: float) -> Vector2i:
 
 # Footstep surface at feet position `feet`: "stone" on anything built (a floor,
 # stairs, a wall top — feet off the terrain) or down in a cave, otherwise the
-# terrain's biome — "grass" when its ground texture is a grass one.
+# ground texture — "grass" on unpainted terrain (the default grass) or a
+# painted grass cell.
 func footstep_surface(feet: Vector3) -> String:
 	var ground := _get_height_at(feet.x, feet.z)
 	if is_nan(ground) or absf(feet.y - ground) > 0.3:
@@ -358,8 +436,11 @@ func footstep_surface(feet: Vector3) -> String:
 	var i := chunk_index(chunk_coords_at(feet.x, feet.z))
 	if i < 0:
 		return "stone"
-	var biome := _biomes_by_id.get((_chunks[i] as Dictionary).get("biome", 0), {}) as Dictionary
-	return "grass" if str(biome.get("material", "")).to_lower().contains("grass") else "stone"
+	var texture := "grass"
+	var cell := _cell_at(i, feet.x, feet.z)
+	if cell > 0 and cell <= _cell_paths.size():
+		texture = _cell_paths[cell - 1]
+	return "grass" if texture.to_lower().contains("grass") else "stone"
 
 
 func chunk_index(c: Vector2i) -> int:
@@ -374,10 +455,14 @@ func chunk_index(c: Vector2i) -> int:
 # can use a cheap HeightMapShape3D instead of a trimesh collider.
 func build_chunk_arrays(i: int) -> Dictionary:
 	var chunk := _chunks[i] as Dictionary
-	var out := { "h1": _build_mesh_arrays(chunk.h1) }
-	if chunk.type == 2:
-		out["h2"] = _build_mesh_arrays(chunk.h2)
-		out["h3"] = _build_mesh_arrays(chunk.h3)
+	var at := Transform3D(Basis.IDENTITY, _chunk_origin(i))
+	var out := {}
+	for layer in (["h1", "h2", "h3"] if chunk.type == 2 else ["h1"]):
+		# "hN" collides (indexed, exact); "hN_draw" is what's drawn: the same
+		# surface through the PS2 geometry path (ps2_mesh.gd).
+		var arrays := _build_mesh_arrays(chunk[layer])
+		out[layer] = arrays
+		out[layer + "_draw"] = Ps2Mesh.build_world_arrays(arrays, at)
 	var h1: Array = chunk.h1
 	var hm := PackedFloat32Array(); hm.resize(h1.size())
 	var inv := 1.0 / cell_size
@@ -389,44 +474,54 @@ func build_chunk_arrays(i: int) -> Dictionary:
 		hm[j] = h * inv
 	if not hm.is_empty():
 		out["h1_heightmap"] = hm
+	out["grass"] = Grass.build_chunk(at.origin, chunk_cells, cell_size, h1,
+		chunk.get("cells", PackedByteArray()), _grass_cell, _grass_tile, _grass_tinted,
+		_static_boxes, _pillars, _water_rects, _get_height_at,
+		hash(Vector2i(i % chunks_x + origin_cx, int(i / chunks_x) + origin_cz)) ^ 0x6a55)
 	return out
 
 
 # Main thread: meshes + colliders + scattered biome props for chunk `i`, all
 # under one Node3D so unloading the chunk is a single queue_free().
+func _chunk_origin(i: int) -> Vector3:
+	var cx := i % chunks_x
+	var cz := int(i / chunks_x)
+	return Vector3(world_ox + cx * chunk_cells * cell_size, 0.0, world_oz + cz * chunk_cells * cell_size)
+
+
 func make_chunk_node(i: int, arrays: Dictionary) -> Node3D:
 	var cx := i % chunks_x
 	var cz := int(i / chunks_x)
-	var origin := Vector3(world_ox + cx * chunk_cells * cell_size, 0.0, world_oz + cz * chunk_cells * cell_size)
+	var origin := _chunk_origin(i)
 	var biome_id := _chunks[i].get("biome", 0) as int
 
-	var chunk_mat: Material
-	if _biomes.is_empty():
-		chunk_mat = _material
-	else:
-		if not _biome_mat_cache.has(biome_id):
-			_biome_mat_cache[biome_id] = WorldShaders.biome_surface_mat(biome_id, _biomes, chunk_cells * cell_size)
-		chunk_mat = _biome_mat_cache[biome_id] as Material
+	var chunk_mat: Material = _material
+	if (_chunks[i] as Dictionary).has("cells") and _cell_array != null and chunk_mat is ShaderMaterial:
+		if not _cell_mat_cache.has(i):
+			_cell_mat_cache[i] = WorldShaders.cell_surface_mat(chunk_mat, _chunks[i]["cells"], chunk_cells,
+				Vector2(origin.x, origin.z), cell_size, _cell_array, _cell_tiles)
+		chunk_mat = _cell_mat_cache[i] as Material
 
 	var node := Node3D.new()
 	node.name = "Chunk_%d_%d" % [cx, cz]
-	var floor_mi := _make_chunk(arrays.h1, origin, chunk_mat)
+	var floor_mi := _make_chunk(arrays.h1_draw, origin, chunk_mat)
 	floor_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 	if arrays.has("h1_heightmap"):
 		node.add_child(_with_heightmap_collision(floor_mi, arrays.h1_heightmap))
 	else:
-		node.add_child(_with_collision(floor_mi))
+		node.add_child(_with_collision(floor_mi, arrays.h1))
 	if arrays.has("h2"):
-		var ceil_mi := _make_chunk(arrays.h2, origin, _mat_cave)
+		var ceil_mi := _make_chunk(arrays.h2_draw, origin, _mat_cave)
 		ceil_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-		node.add_child(_with_collision(ceil_mi))
-		node.add_child(_with_collision(_make_chunk(arrays.h3, origin, _mat_cave)))
+		node.add_child(_with_collision(ceil_mi, arrays.h2))
+		node.add_child(_with_collision(_make_chunk(arrays.h3_draw, origin, _mat_cave), arrays.h3))
 
 	# Seeded per chunk so a chunk scatters the same props every time it
 	# streams back in, instead of reshuffling whenever the player returns.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(Vector2i(cx + origin_cx, cz + origin_cz))
 	_scatter_biome_props(biome_id, origin, _prop_cache, node, rng)
+	Grass.make_nodes(node, arrays.get("grass", []))
 	return node
 
 
@@ -450,6 +545,7 @@ func spawn_static(parent: Node3D) -> void:
 		parent.add_child(_with_cylinder_collision(node, (obj.radius as float) * collision_ratio, obj.height as float))
 
 	_spawn_walls(parent)
+	_spawn_pillars(parent)
 
 	var water_mat := WorldShaders.water_mat()
 	for wr in _water_rects:
@@ -460,8 +556,8 @@ func spawn_static(parent: Node3D) -> void:
 		var mi := MeshInstance3D.new()
 		plane.size = Vector2(wr.width as float, wr.depth as float)
 		plane.surface_set_material(0, water_mat)
-		mi.mesh     = plane
 		mi.position = Vector3(wr.x as float, wr.y as float, wr.z as float)
+		mi.mesh     = _ps2_world_mesh(plane, mi.transform)
 		parent.add_child(mi)
 
 	for pi_ in _prop_instances:
@@ -625,9 +721,17 @@ func _make_waterfall_volume(wr: Dictionary, mat: Material) -> MeshInstance3D:
 	box.size = Vector3(width, drop, depth)
 	box.surface_set_material(0, mat)
 	var mi := MeshInstance3D.new()
-	mi.mesh     = box
 	mi.position = Vector3(x, top_y - drop * 0.5, z)
+	mi.mesh     = _ps2_world_mesh(box, mi.transform)
 	return mi
+
+
+# A scenery primitive (water plane, waterfall box) through the PS2 geometry
+# path: cut into ps2_mesh.gd's PRIMITIVE_CELL cells (light and fog only exist
+# at vertices) and quantised on the world grid. `xform` is its world placement.
+func _ps2_world_mesh(src: PrimitiveMesh, xform: Transform3D) -> Mesh:
+	var built := Ps2Mesh.convert(src, Ps2Mesh.WORLD_GRID, xform)
+	return built if built != null else src
 
 
 # Dedicated physics layer for terrain/wall colliders (see _with_collision) —
@@ -650,13 +754,19 @@ const COLLISION_LAYER_WORLD := 2
 # for the shape and the render mesh to end up at the same place; parenting
 # both under an identity-transform body would leave every non-origin
 # chunk/wall's collider sitting at world (0,0,0).
-func _with_collision(mesh_instance: MeshInstance3D) -> Node3D:
-	var mesh := mesh_instance.mesh
-	if mesh == null or mesh.get_surface_count() == 0:
+# The collider comes from the surface's original indexed `arrays`, not the
+# drawn PS2 mesh (quantised, one vertex per triangle corner).
+func _with_collision(mesh_instance: MeshInstance3D, arrays: Array) -> Node3D:
+	var verts := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
+	var index := arrays[Mesh.ARRAY_INDEX] as PackedInt32Array
+	if index.is_empty():
 		return mesh_instance
-	var shape := mesh.create_trimesh_shape()
-	if shape == null:
-		return mesh_instance
+	var faces := PackedVector3Array()
+	faces.resize(index.size())
+	for k in index.size():
+		faces[k] = verts[index[k]]
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
 	var body := StaticBody3D.new()
 	body.collision_layer = COLLISION_LAYER_WORLD
 	body.collision_mask  = 0
@@ -701,6 +811,35 @@ func _with_heightmap_collision(mesh_instance: MeshInstance3D, heights: PackedFlo
 # how the server represents them (StaticCollider: a plain radius+height
 # cylinder) — rather than deriving an exact trimesh, since `node` here is an
 # arbitrary imported prop scene, not a single mesh we control.
+# Pillars: a cylinder mesh in its wall type's material (world-space triplanar,
+# so no UVs needed) plus the same cylinder collider static objects get. The
+# base sits on the terrain under the centre + y_offset, like the server's
+# top_y = terrain + y_offset + height.
+func _spawn_pillars(parent: Node3D) -> void:
+	for p in _pillars:
+		var wy := _get_height_at(p.x as float, p.z as float)
+		if is_nan(wy): wy = 0.0
+		var radius := p.radius as float
+		var height := p.height as float
+		var cyl := CylinderMesh.new()
+		cyl.top_radius      = radius
+		cyl.bottom_radius   = radius
+		cyl.height          = height
+		cyl.radial_segments = PILLAR_SIDES
+		cyl.rings           = 1
+		cyl.surface_set_material(0, _wall_mats.get(p.type as int, _wall_mat_default))
+		var base := Vector3(p.x as float, wy + (p.y_offset as float), p.z as float)
+		# CylinderMesh is centred on its origin: lift it to span [base, base + height].
+		var lift := Vector3(0.0, height * 0.5, 0.0)
+		var mi := MeshInstance3D.new()
+		mi.position = lift
+		mi.mesh     = _ps2_world_mesh(cyl, Transform3D(Basis.IDENTITY, base + lift))
+		var holder := Node3D.new()
+		holder.position = base
+		holder.add_child(mi)
+		parent.add_child(_with_cylinder_collision(holder, radius, height))
+
+
 func _with_cylinder_collision(node: Node3D, radius: float, height: float) -> Node3D:
 	if radius <= 0.0:
 		return node
@@ -770,9 +909,11 @@ func _build_mesh_arrays(h1: Array, flip_normals: bool = false) -> Array:
 	return arr
 
 
+# `arrays` is a PS2-built surface (Ps2Mesh.build_world_arrays): an unindexed
+# triangle list, or empty when the layer has no triangles.
 func _make_chunk(arrays: Array, origin: Vector3, mat: Material) -> MeshInstance3D:
 	var mesh := ArrayMesh.new()
-	if not (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty():
+	if not arrays.is_empty():
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(0, mat)
 	var mi      := MeshInstance3D.new()
@@ -829,6 +970,20 @@ func _spawn_walls(parent: Node3D) -> void:
 		var wy := _get_height_at(wb.x as float, wb.z as float)
 		if is_nan(wy): wy = 0.0
 		var xform  := _wall_transform(wb, wy)
+		if RampMesh.is_ramp(wb):
+			# One wedge: a convex hull to collide with, its own mesh in its frame.
+			var ramp_body := StaticBody3D.new()
+			ramp_body.collision_layer = COLLISION_LAYER_WORLD
+			ramp_body.collision_mask  = 0
+			ramp_body.transform       = xform
+			var hull := ConvexPolygonShape3D.new()
+			hull.points = RampMesh.corners(wb)
+			var hull_cs := CollisionShape3D.new()
+			hull_cs.shape = hull
+			ramp_body.add_child(hull_cs)
+			parent.add_child(ramp_body)
+			jobs.append({"ramp": wb, "xform": xform, "type": wb.type as int, "parent": ramp_body})
+			continue
 		var pieces := _carve_wall_pieces(wb)
 		var body   := StaticBody3D.new()
 		body.collision_layer = COLLISION_LAYER_WORLD
@@ -867,11 +1022,23 @@ func _spawn_walls(parent: Node3D) -> void:
 	# each writes only its own job's "arrays". The nodes are made back here.
 	var task := WorkerThreadPool.add_group_task(func(i: int) -> void:
 		var job: Dictionary = jobs[i]
-		var boxes: Array[AABB] = _disjoint_boxes(job.boxes) if job.get("overlapping", false) else job.boxes
-		job["arrays"] = _wall_mesh_arrays(boxes, job.xform, job.jitter), jobs.size(), -1, true, "wall meshes")
+		# job.xform places the mesh in the world: identity for merged groups,
+		# the body's transform for rotated walls and ramps (the world root is at origin).
+		var surfaces: Array
+		if job.has("ramp"):
+			surfaces = [RampMesh.arrays(job.ramp)]
+		else:
+			var boxes: Array[AABB] = _disjoint_boxes(job.boxes) if job.get("overlapping", false) else job.boxes
+			surfaces = _wall_mesh_arrays(boxes, job.xform, job.jitter)
+		var drawn := []
+		for arr: Array in surfaces:
+			var ps2 := Ps2Mesh.build_world_arrays(arr, job.xform)
+			if not ps2.is_empty():
+				drawn.append(ps2)
+		job["arrays"] = drawn, jobs.size(), -1, true, "wall meshes")
 	WorkerThreadPool.wait_for_group_task_completion(task)
 	for job in jobs:
-		var mat: ShaderMaterial = _wall_mats.get(job.type, _wall_mat_default)
+		var mat: Material = _wall_mats.get(job.type, _wall_mat_default)
 		for arr: Array in job.arrays:
 			var mesh := ArrayMesh.new()
 			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
@@ -941,7 +1108,7 @@ func _rest_height(x: float, z: float) -> float:
 			continue
 		var base := _get_height_at(wb.x as float, wb.z as float)
 		if is_nan(base): base = 0.0
-		var top := base + (wb.get("y_offset", 0.0) as float) + (wb.height as float)
+		var top := base + (wb.get("y_offset", 0.0) as float) + RampMesh.top_at(wb, local.x)
 		if top <= reach:
 			y = maxf(y, top)
 	return y

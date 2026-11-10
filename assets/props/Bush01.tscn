@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://6mp0vbb5x62i"]
+
+[ext_resource type="PackedScene" uid="uid://drkjgw33a510l" path="res://assets/meshes/bush01.glb" id="1_caykr"]
+
+[node name="bush01" unique_id=2054532514 instance=ExtResource("1_caykr")]
+transform = Transform3D(0.305, 0, 0, 0, 0.305, 0, 0, 0, 0.305, 0, 0, 0)
+
+[node name="Bush Acer Platanoides ShurbSymmetry N160219" parent="." index="0" unique_id=7364536]
+transform = Transform3D(0.10000001, 0, 0, 0, 0, -0.10000001, 0, 0.10000001, 0, -55.73771, 0, 0)

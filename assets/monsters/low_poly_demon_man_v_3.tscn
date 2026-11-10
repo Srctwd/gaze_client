@@ -26,3 +26,9 @@ bone_idx = 8
 
 [node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=465881742]
 transform = Transform3D(1.0000005, -7.450581e-09, -1.1920929e-07, -1.8626451e-09, 1, 7.450581e-09, 0, 2.9802322e-08, 1, 0.04886639, 0.95253885, 0.41902468)
+
+[node name="HitPointAttachment" type="BoneAttachment3D" parent="Armature/Skeleton3D"]
+bone_name = "chest"
+bone_idx = 1
+
+[node name="HitPoint" type="Marker3D" parent="Armature/Skeleton3D/HitPointAttachment"]

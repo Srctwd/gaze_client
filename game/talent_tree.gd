@@ -108,8 +108,8 @@ func _parse_requires(node, key_to_id: Dictionary) -> Dictionary:
 	return { "type": "none" }
 
 
-# All node ids referenced anywhere in a requirement tree (dedup'd) — useful
-# for drawing connector lines, not an AND/OR evaluation.
+# All node ids referenced anywhere in a requirement tree (dedup'd) — what a
+# talent's detail screen lists as unlocking it, not an AND/OR evaluation.
 func prereq_nodes(req: Dictionary) -> Array:
 	var seen: Dictionary = {}
 	_collect_prereq_nodes(req, seen)
@@ -122,29 +122,6 @@ func _collect_prereq_nodes(req: Dictionary, seen: Dictionary) -> void:
 		"and", "or":
 			for c in req.children:
 				_collect_prereq_nodes(c, seen)
-
-
-# Same node set as prereq_nodes(), but tagged with whether each is strictly
-# required or just one of several alternatives — drives arrow direction in
-# the tree UI: a node reachable only through "and" ancestors is mandatory
-# (arrow prereq -> dependent, "this unlocks that"); a node reachable through
-# any "or" ancestor is optional (arrow dependent -> prereq, "this can also
-# use that"), even if that same "or" branch is itself an "and" of two nodes.
-func prereq_edges(req: Dictionary) -> Dictionary:
-	var result: Dictionary = {}  # node_id -> bool (true = optional)
-	_collect_prereq_edges(req, false, result)
-	return result
-
-func _collect_prereq_edges(req: Dictionary, under_or: bool, result: Dictionary) -> void:
-	match req.type:
-		"has":
-			result[req.node] = result.get(req.node, true) and under_or
-		"and":
-			for c in req.children:
-				_collect_prereq_edges(c, under_or, result)
-		"or":
-			for c in req.children:
-				_collect_prereq_edges(c, true, result)
 
 
 func requirement_met(req: Dictionary, learned: Dictionary) -> bool:

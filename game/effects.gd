@@ -10,7 +10,8 @@ const _DEF_HIT_SCENE        := preload("res://assets/effects/def_hit.tscn")
 # Prefers a hand-authored res://assets/effects/portal.tscn (wrapping the raw
 # glb with a Marker3D marking its effective center) over the raw glb itself —
 # loaded lazily, not preloaded, since portal.tscn may not exist.
-const _PORTAL_GLB_PATH  := "res://assets/effects/portal.glb"
+const _PORTAL_GLB_PATH  := "res://assets/meshes/portal.glb"
+const Ps2Materials := preload("res://ps2/ps2_materials.gd")
 const _PORTAL_TSCN_PATH := "res://assets/effects/portal.tscn"
 var _portal_scene: PackedScene
 
@@ -39,6 +40,7 @@ const _MONSTER_TYPES := {
 	Protocol.UNIT_RAT:       true,
 	Protocol.UNIT_CAVE_RAT:  true,
 	Protocol.UNIT_VALKYRIE:  true,
+	Protocol.UNIT_WITCH:     true,
 }
 const _PORTAL_FALLBACK_DURATION := 1.5  # used only if the glb has no AnimationPlayer/clip to time off of
 
@@ -168,7 +170,7 @@ func _stop_shot_at(attacker_id: int, target_id: int) -> void:
 	var target := _entity_manager.entities.get(target_id) as Node3D
 	if target == null:
 		return
-	var center := _body_center(target)
+	var center := _hit_point(target)
 	var best: Node3D = null
 	var best_d := _SHOT_HIT_SLACK
 	for node in get_tree().get_nodes_in_group(FreeAimProjectile.GROUP):
@@ -283,30 +285,23 @@ func _animate_projectile(node: Node3D, from: Vector3, target: Node3D) -> void:
 			node.queue_free()
 	)
 
-# One-shot droplet prefab (see assets/effects/) fired from the middle of the
-# target's visible body. The prefab's own `amount` is the base droplet count;
+# One-shot droplet prefab (see assets/effects/) fired from the target's
+# HitPoint. The prefab's own `amount` is the base droplet count;
 # `amount_scale` multiplies it (e.g. more blood for several hits in one tick).
 func _spawn_hit_burst(scene: PackedScene, target: Node3D, amount_scale := 1.0) -> void:
 	var p := scene.instantiate() as GPUParticles3D
 	p.amount = maxi(1, roundi(p.amount * amount_scale))
 	get_parent().add_child(p)
-	p.global_position = _body_center(target)
+	p.global_position = _hit_point(target)
 	p.emitting = true
 	p.finished.connect(p.queue_free)
 
-# World-space center of everything the target renders — monsters range from
-# rats to minotaurs, so a fixed height offset would miss most of them.
-func _body_center(target: Node3D) -> Vector3:
-	var box: AABB
-	var have := false
-	for node in target.find_children("*", "MeshInstance3D", true, false):
-		var mi := node as MeshInstance3D
-		if not mi.visible:
-			continue
-		var b := mi.global_transform * mi.get_aabb()
-		box = b if not have else box.merge(b)
-		have = true
-	return box.get_center() if have else target.global_position + Vector3(0, 0.7, 0)
+# Where hits land on a unit: the HitPoint Marker3D authored in its scene (on a
+# chest/spine bone where the model has one, so it follows the animation).
+# A scene without one bleeds from the unit's feet.
+func _hit_point(target: Node3D) -> Vector3:
+	var marker := target.find_child("HitPoint", true, false) as Node3D
+	return marker.global_position if marker != null else target.global_position
 
 func _spawn_flame_effect(target: Node3D) -> void:
 	var particles := _FLAME_PARTICLES_SCENE.instantiate() as GPUParticles3D
@@ -365,19 +360,17 @@ func _spawn_portal_effect(net_id: int) -> void:
 # portal.glb's material imports as alpha-BLEND, which Godot sorts against other
 # transparent draws object-by-object (painter's algorithm) rather than per
 # pixel — so it always draws over the monster it's meant to overlap/enclose,
-# regardless of which is actually nearer the camera. ALPHA_HASH keeps the
-# translucent look (dithered instead of smoothly blended) but writes/tests
-# real per-pixel depth like an opaque material, so it interleaves correctly
-# with the monster's opaque mesh instead of always winning.
+# regardless of which is actually nearer the camera. A cut-out (alpha
+# scissor) material writes/tests real per-pixel depth like an opaque one, so
+# it interleaves correctly with the monster's opaque mesh instead of always
+# winning.
 func _fix_portal_transparency(node: Node3D) -> void:
 	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
 		for i in mi.mesh.get_surface_count():
-			var mat := mi.get_active_material(i) as BaseMaterial3D
-			if mat == null or mat.transparency != BaseMaterial3D.TRANSPARENCY_ALPHA:
+			var mat := mi.get_active_material(i) as ShaderMaterial
+			if mat == null or mat.shader != Ps2Materials.MODEL_BLEND_SHADER:
 				continue
-			var dup := mat.duplicate() as BaseMaterial3D
-			dup.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_HASH
-			mi.set_surface_override_material(i, dup)
+			mi.set_surface_override_material(i, Ps2Materials.cut_out(mat))
 
 # Plays the prefab's own animation once — not looped, unlike _autoplay_animations'
 # projectile clips, since this is a one-shot spawn effect — and reports its

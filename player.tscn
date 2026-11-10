@@ -1,7 +1,0 @@
-[gd_scene format=3]
-
-[ext_resource type="PackedScene" uid="uid://bdrh3tefwbi2x" path="res://assets/monsters/ManlyMan.tscn" id="1"]
-
-[node name="Player" type="StaticBody3D"]
-
-[node name="Mesh" parent="." instance=ExtResource("1")]

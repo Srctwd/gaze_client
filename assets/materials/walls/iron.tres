@@ -1,0 +1,11 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://ps2/ps2_world.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://assets/textures/dull_metal_albedo.png" id="2_tex"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/albedo_tex = ExtResource("2_tex")
+shader_parameter/projection = 2
+shader_parameter/tile_scale = 2.0

@@ -33,8 +33,6 @@ func _ready() -> void:
 	add_child(_talent_tree_ui)
 	player_controller.set("talent_tree_ui", _talent_tree_ui)
 	character_ui.set("talent_tree_ui", _talent_tree_ui)
-	_talent_tree_ui.talent_selected.connect(character_ui._on_talent_chosen)
-	_talent_tree_ui.selection_cancelled.connect(character_ui._on_talent_selection_cancelled)
 
 	var options_menu := preload("res://ui/options_menu.gd").new()
 	add_child(options_menu)
@@ -59,6 +57,7 @@ func _ready() -> void:
 	Network.login_fail.connect(_on_login_fail)
 	Network.unit_destroyed.connect(_on_unit_destroyed)
 	Network.vital_update.connect(_on_vital_update)
+	Network.connect_to_server()
 
 	login_ui.login_pressed.connect(_on_login_pressed)
 	character_ui.character_confirmed.connect(_on_character_confirmed)
@@ -153,8 +152,9 @@ func _on_login_fail() -> void:
 	login_ui.visible = true
 	login_ui.show_error("Invalid credentials")
 
-func _on_player_moved(_pos: Vector3) -> void:
+func _on_player_moved(pos: Vector3) -> void:
 	camera.set_underwater(_terrain.is_in_water(camera.global_position))
+	_terrain.set_grass_push(pos)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:

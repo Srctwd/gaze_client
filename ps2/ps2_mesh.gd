@@ -28,6 +28,11 @@ const BYTES_BATCH  := 48  # per batch: GIF tag, UNPACK/MSCAL codes, XGKICK
 const PRIMITIVE_CELL := 4.0
 const MAX_SUBDIVIDE  := 63
 
+# Scenery (terrain, walls, water) quantises on this world-aligned grid
+# instead of per mesh: s16 relative to each chunk (±512 units), so
+# neighbouring meshes round their shared border to the same points (§7).
+const WORLD_GRID := 1.0 / 64.0
+
 
 ## Returns the PS2-built copy of `src`, or null when it can't be converted.
 ## grid > 0 quantises positions on a world-aligned grid of that step instead
@@ -39,6 +44,15 @@ static func convert(src: Mesh, grid: float = 0.0, xform := Transform3D.IDENTITY)
 		return null
 	run(job)
 	return finish(job)
+
+
+## Any thread (pure data): the PS2-built triangle list for one scenery
+## surface (Mesh.ARRAY_MAX arrays, indexed triangles), quantised on
+## WORLD_GRID. `xform` is where the mesh will sit in the world. The result has
+## no index buffer, like everything ps2_mesh builds. Empty if it can't build.
+static func build_world_arrays(arrays: Array, xform: Transform3D) -> Array:
+	var built := _build(arrays, [], 4, WORLD_GRID, xform)
+	return built.get("arrays", [])
 
 
 ## Main thread: snapshot everything the worker needs. Empty if unsupported.

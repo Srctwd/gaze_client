@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://cgeqpi0opjie0"]
+
+[ext_resource type="Script" uid="uid://bs4bb7v6shskq" path="res://world_editor/main.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://vwheopuqqug3" path="res://assets/meshes/tree05.glb" id="2_wrn2t"]
+
+[node name="Main" type="Node3D" unique_id=1120325995]
+script = ExtResource("1")
+
+[node name="tree05" parent="." unique_id=553974385 instance=ExtResource("2_wrn2t")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.762232, 0, -7.944151)

@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://dscn0o3h8trtt"]
 
+[ext_resource type="Shader" path="res://ps2/ps2_particle.gdshader" id="1_5n631"]
+
 [sub_resource type="Gradient" id="fade"]
 colors = PackedColorArray(0.54901963, 0, 0.019607844, 1, 0.55, 0, 0.02, 0)
 
@@ -25,17 +27,15 @@ scale_max = 2.0
 scale_curve = SubResource("shrink_tex")
 color_ramp = SubResource("fade_tex")
 
-[sub_resource type="StandardMaterial3D" id="droplet_mat"]
-transparency = 1
-shading_mode = 0
-vertex_color_use_as_albedo = true
-billboard_mode = 3
-particles_anim_h_frames = 1
-particles_anim_v_frames = 1
-particles_anim_loop = false
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_w60xp"]
+render_priority = 0
+shader = ExtResource("1_5n631")
+shader_parameter/albedo_color = Vector4(1, 1, 1, 1)
+shader_parameter/use_vertex_colors = true
+shader_parameter/lit = false
 
 [sub_resource type="QuadMesh" id="droplet"]
-material = SubResource("droplet_mat")
+material = SubResource("ShaderMaterial_w60xp")
 size = Vector2(0.09, 0.09)
 
 [node name="BloodSplatter" type="GPUParticles3D" unique_id=995883408]

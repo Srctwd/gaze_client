@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://codmrqeh78cbx"]
 
-[ext_resource type="PackedScene" uid="uid://cyj7cd86k3687" path="res://assets/ThrowingKnife.glb" id="1"]
+[ext_resource type="PackedScene" uid="uid://cyj7cd86k3687" path="res://assets/meshes/ThrowingKnife.glb" id="1"]
 [ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2"]
 [ext_resource type="PackedScene" path="res://assets/projectiles/Dagger.tscn" id="3"]
 
@@ -20,4 +20,7 @@ transform = Transform3D(0.8, 0, 0, 0, -3.4969112e-08, 0.8, 0, -0.8, -3.4969112e-
 transform = Transform3D(0.71000016, 0, 0, 0, -3.1035093e-08, 0.71000016, 0, -0.71000016, -3.1035093e-08, 0, 0.3786579, -0.12466646)
 
 [node name="HandGrip" type="Marker3D" parent="." index="4" unique_id=525554537]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 5.6782994)
+
+[node name="FirstPersonGrip" type="Marker3D" parent="." unique_id=1520263079]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 5.6782994)

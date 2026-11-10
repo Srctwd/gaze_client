@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://c4qkkhkinledn"]
+
+[ext_resource type="PackedScene" uid="uid://dg3l31vl411tg" path="res://assets/meshes/berry.glb" id="1_berry"]
+[ext_resource type="Script" uid="uid://cp25nf7o8ty0e" path="res://assets/items/item_prefab.gd" id="2_prefab"]
+
+[node name="Berry" type="Node3D" unique_id=1988044259]
+script = ExtResource("2_prefab")
+
+[node name="Mesh" parent="." unique_id=1333921047 instance=ExtResource("1_berry")]
+transform = Transform3D(0.05, 0, 0, 0, 0.05, 0, 0, 0, 0.05, 0, 0, 0)
+
+[node name="HandGrip" type="Marker3D" parent="." unique_id=1033971694]
+
+[node name="FirstPersonGrip" type="Marker3D" parent="." unique_id=1400658589]
+transform = Transform3D(1, 0, 0, 0, 0.5, -0.8660254, 0, 0.8660254, 0.5, 0, -0.04957951, 0)

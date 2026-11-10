@@ -2,21 +2,21 @@ extends CanvasLayer
 
 signal character_confirmed(char_id: int)
 
-const RACES := ["Human", "Homunculi", "Elf", "Orc", "Ogre", "Naga"]
+const CharacterCreateUI := preload("res://ui/character_create_ui.gd")
 
 var _token: String = ""
-var _http: HTTPRequest
 var _selected_char_id: int = -1
-var talent_tree_ui: Node = null  # set by main.gd, matches player_controller's wiring pattern
-var _chosen_talent_id: int = -1
-var _characters: Array = []  # last-fetched character list, for a local dupe-name check before talent selection
+# Set by main.gd (player_controller's wiring pattern); the create screen
+# picks the starting talent with it.
+var talent_tree_ui: Node = null:
+	set(value):
+		talent_tree_ui = value
+		_create_screen.talent_tree_ui = value
+var _characters: Array = []  # last-fetched character list, for the create screen's dupe-name check
 
 var _select_panel: VBoxContainer
-var _create_panel: VBoxContainer
+var _create_screen: CharacterCreateUI
 var _list_container: VBoxContainer
-var _name_field: LineEdit
-var _race_option: OptionButton
-var _create_error: Label
 var _delete_dialog: ConfirmationDialog
 var _delete_char_id: int = -1  # waiting on the confirm dialog
 var _delete_char_name: String = ""
@@ -26,10 +26,6 @@ var _select_error: Label
 
 
 func _ready() -> void:
-	_http = HTTPRequest.new()
-	add_child(_http)
-	_http.request_completed.connect(_on_http_response)
-
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
@@ -59,44 +55,11 @@ func _ready() -> void:
 	new_btn.pressed.connect(_show_create)
 	_select_panel.add_child(new_btn)
 
-	# ── Create screen ──────────────────────────────────────────────
-	_create_panel = VBoxContainer.new()
-	_create_panel.custom_minimum_size = Vector2(300, 0)
-	center.add_child(_create_panel)
-
-	var cre_title := Label.new()
-	cre_title.text = "New Character"
-	cre_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_create_panel.add_child(cre_title)
-
-	_name_field = LineEdit.new()
-	_name_field.placeholder_text = "Name"
-	_create_panel.add_child(_name_field)
-
-	_race_option = OptionButton.new()
-	for race in RACES:
-		_race_option.add_item(race)
-	_create_panel.add_child(_race_option)
-
-	_create_error = Label.new()
-	_create_error.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_create_error.modulate = Color(1, 0.3, 0.3)
-	_create_panel.add_child(_create_error)
-
-	var btn_row := HBoxContainer.new()
-	_create_panel.add_child(btn_row)
-
-	var back_btn := Button.new()
-	back_btn.text = "Back"
-	back_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	back_btn.pressed.connect(_show_select)
-	btn_row.add_child(back_btn)
-
-	var create_btn := Button.new()
-	create_btn.text = "Create"
-	create_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	create_btn.pressed.connect(_on_create_pressed)
-	btn_row.add_child(create_btn)
+	# ── Create screen (character_create_ui.gd) ─────────────────────
+	_create_screen = CharacterCreateUI.new()
+	add_child(_create_screen)
+	_create_screen.create_requested.connect(_on_create_requested)
+	_create_screen.cancelled.connect(_show_select)
 
 	# ── Delete confirmation ────────────────────────────────────────
 	_delete_dialog = ConfirmationDialog.new()
@@ -118,27 +81,32 @@ func _ready() -> void:
 	del_box.add_child(_delete_name_field)
 	_delete_dialog.register_text_enter(_delete_name_field)
 	Network.character_deleted.connect(_on_character_deleted)
+	Network.character_list.connect(_on_character_list)
+	Network.character_created.connect(_on_character_created)
 
 	visible = false
 
 
+# Everything at character select goes over the game connection — the web
+# server only logs in. The list arrives as CharacterList (_on_character_list).
 func show_for_token(token: String) -> void:
 	_token = token
-	_http.request(Config.WEBSERVER + "/api/characters?token=" + token,
-		[], HTTPClient.METHOD_GET)
+	_request_list()
+
+
+func _request_list() -> void:
+	Network.send(Protocol.pkt_character_list(_token))
 
 
 func _show_select() -> void:
 	_select_error.text = ""
 	_select_panel.visible = true
-	_create_panel.visible = false
+	_create_screen.visible = false
 
 
 func _show_create() -> void:
-	_name_field.text = ""
-	_create_error.text = ""
 	_select_panel.visible = false
-	_create_panel.visible = true
+	_create_screen.open(_characters.map(func(c: Dictionary) -> String: return c["name"]))
 
 
 func _populate_list(characters: Array) -> void:
@@ -149,7 +117,7 @@ func _populate_list(characters: Array) -> void:
 		var row := HBoxContainer.new()
 		_list_container.add_child(row)
 		var btn := Button.new()
-		btn.text = "%s  (Lvl %d %s)" % [c["name"], _xp_to_level(c["experience"]), RACES[c["race"]]]
+		btn.text = "%s  (Lvl %d %s)" % [c["name"], _xp_to_level(c["experience"]), Races.ALL[c["race"]]["name"]]
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.pressed.connect(_on_character_selected.bind(c["id"]))
 		row.add_child(btn)
@@ -188,71 +156,29 @@ func _on_delete_confirmed() -> void:
 
 func _on_character_deleted(result: int) -> void:
 	if result == Protocol.DELETE_OK:
-		_http.request(Config.WEBSERVER + "/api/characters?token=" + _token,
-			[], HTTPClient.METHOD_GET)
+		_request_list()
 	elif result == Protocol.DELETE_IN_GAME:
 		_select_error.text = "That character is in game right now."
 	else:
 		_select_error.text = "Couldn't delete. Log in again and retry."
 
 
-func _on_create_pressed() -> void:
-	var name_val := _name_field.text.strip_edges()
-	if name_val.is_empty():
-		_create_error.text = "Enter a name."
-		return
-	# Catch an obvious duplicate against this account's own already-fetched
-	# characters before spending a round trip through talent selection — the
-	# server still has the last word (a name taken by another account isn't
-	# visible here), checked again once the actual creation request goes out.
-	for c in _characters:
-		if (c["name"] as String).to_lower() == name_val.to_lower():
-			_create_error.text = 'A character named "%s" already exists.' % name_val
-			return
-	if talent_tree_ui == null:
-		return
-	_create_panel.visible = false
-	talent_tree_ui.start_selection()
+func _on_create_requested(char_name: String, race: int, talent: int, skin_color: int) -> void:
+	Network.send(Protocol.pkt_create_character(_token, char_name, race, talent, skin_color))
 
 
-# Talent choice comes before the character exists server-side — the pick
-# rides along on the creation request itself (node_id) rather than a
-# separate learn-talent call after the fact.
-func _on_talent_chosen(node_id: int) -> void:
-	_chosen_talent_id = node_id
-	var name_val := _name_field.text.strip_edges()
-	var body := JSON.stringify({
-		"token": _token, "name": name_val, "race": _race_option.selected,
-		"node_id": _chosen_talent_id,
-	})
-	_http.request(Config.WEBSERVER + "/api/characters",
-		["Content-Type: application/json"],
-		HTTPClient.METHOD_POST, body)
+func _on_character_list(ok: bool, characters: Array) -> void:
+	_populate_list(characters)
+	_show_select()
+	if not ok:
+		_select_error.text = "Your login expired. Log in again."
+	visible = true
 
 
-func _on_talent_selection_cancelled() -> void:
-	_create_panel.visible = true
-
-
-func _on_http_response(_result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	var json: Variant = JSON.parse_string(body.get_string_from_utf8())
-	if code == 200 and json is Array:
-		_populate_list(json)
-		_show_select()
-		visible = true
-		return
-	if code == 200 and json is Dictionary and json.get("ok"):
-		_http.request(Config.WEBSERVER + "/api/characters?token=" + _token,
-			[], HTTPClient.METHOD_GET)
-		return
-	# Creation failed — talent selection already closed itself by this point
-	# (it fires the request right after picking), so surface the error back
-	# on the name/race panel rather than leaving nothing visible.
-	_create_panel.visible = true
-	if code == 400 and json is Dictionary and json.get("detail") == "Name already taken":
-		_create_error.text = 'A character named "%s" already exists.' % _name_field.text.strip_edges()
-		return
-	_create_error.text = "Error. Try again."
+func _on_character_created(result: int) -> void:
+	_create_screen.show_result(result)
+	if result == Protocol.CREATE_OK:
+		_request_list()
 
 
 func _xp_to_level(xp: int) -> int:

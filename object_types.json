@@ -2,7 +2,7 @@
   {
     "id": 0,
     "name": "Tree",
-    "mesh": "res://assets/tree01.glb",
+    "mesh": "res://assets/meshes/tree01.glb",
     "collision_ratio": 0.21,
     "height_ratio": 2.5,
     "scale_ratio": 0.42
@@ -26,7 +26,7 @@
   {
     "id": 7,
     "name": "Tree02",
-    "mesh": "res://assets/tree02.glb",
+    "mesh": "res://assets/meshes/tree02.glb",
     "collision_ratio": 0.21,
     "height_ratio": 2.5,
     "scale_ratio": 0.21
@@ -34,7 +34,7 @@
   {
     "id": 8,
     "name": "Tree02_b",
-    "mesh": "res://assets/tree02_b.glb",
+    "mesh": "res://assets/meshes/tree02_b.glb",
     "collision_ratio": 0.21,
     "height_ratio": 2.5,
     "scale_ratio": 0.21
@@ -42,7 +42,7 @@
   {
     "id": 9,
     "name": "Tree03",
-    "mesh": "res://assets/tree03.glb",
+    "mesh": "res://assets/meshes/tree03.glb",
     "collision_ratio": 0.21,
     "height_ratio": 2.5,
     "scale_ratio": 0.21
@@ -50,9 +50,33 @@
   {
     "id": 10,
     "name": "Tree03_b",
-    "mesh": "res://assets/tree03_b.glb",
+    "mesh": "res://assets/meshes/tree03_b.glb",
     "collision_ratio": 0.21,
     "height_ratio": 2.5,
     "scale_ratio": 0.21
+  },
+  {
+    "id": 11,
+    "name": "Tree04",
+    "mesh": "res://assets/meshes/tree04.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.42
+  },
+  {
+    "id": 12,
+    "name": "Tree05",
+    "mesh": "res://assets/meshes/tree05.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.42
+  },
+  {
+    "id": 13,
+    "name": "Tree06",
+    "mesh": "res://assets/meshes/tree06.glb",
+    "collision_ratio": 0.21,
+    "height_ratio": 2.5,
+    "scale_ratio": 0.42
   }
 ]

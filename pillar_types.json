@@ -1,0 +1,20 @@
+[
+  {
+    "id": 0,
+    "name": "Stone Pillar",
+    "material": "res://assets/materials/walls/stone_wall.tres",
+    "sides": 12
+  },
+  {
+    "id": 1,
+    "name": "Marble Pillar",
+    "material": "res://assets/materials/walls/marble.tres",
+    "sides": 16
+  },
+  {
+    "id": 2,
+    "name": "Wooden Post",
+    "material": "res://assets/materials/walls/wood.tres",
+    "sides": 8
+  }
+]

@@ -29,3 +29,9 @@ bone_name = "hand.r"
 bone_idx = 8
 
 [node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=2006237586]
+
+[node name="HitPointAttachment" type="BoneAttachment3D" parent="Armature/Skeleton3D"]
+bone_name = "Core.001"
+bone_idx = 1
+
+[node name="HitPoint" type="Marker3D" parent="Armature/Skeleton3D/HitPointAttachment"]

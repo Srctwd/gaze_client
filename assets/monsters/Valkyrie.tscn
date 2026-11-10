@@ -20,3 +20,9 @@ bones/15/rotation = Quaternion(0.06752806, 9.039407e-09, 2.3995943e-08, 0.997717
 bones/16/rotation = Quaternion(0.5063676, -0.49355024, -0.5063676, -0.4935503)
 bones/17/rotation = Quaternion(-0.691526, -1.5005735e-08, -1.7250867e-08, 0.72235155)
 bones/19/rotation = Quaternion(0.06752806, -9.039407e-09, -2.3995943e-08, 0.9977174)
+
+[node name="HitPointAttachment" type="BoneAttachment3D" parent="Armature/Skeleton3D"]
+bone_name = "Chest"
+bone_idx = 1
+
+[node name="HitPoint" type="Marker3D" parent="Armature/Skeleton3D/HitPointAttachment"]

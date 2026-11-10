@@ -46,9 +46,10 @@ func _process(delta: float) -> void:
 		_e_held += delta
 		if _e_held >= _PICKUP_HOLD:
 			_e_held = -INF
-			# A chest we haven't looted (as far as the server has told us)
-			# wins over floor items; once it answers "opened"/"already
-			# opened" it drops out, so items on or under it stay reachable.
+			# A chest we haven't looted (as far as the server has told us) or
+			# a berry bush wins over floor items; once a chest answers
+			# "opened"/"already opened" it drops out, so items on or under it
+			# stay reachable. A bare bush stays in, so it can say so.
 			var chest_id := _pick_interactable_chest()
 			if chest_id != -1:
 				Network.send(Protocol.pkt_interact_entity(chest_id))
@@ -73,6 +74,10 @@ func _pick_interactable_chest() -> int:
 	for net_id: int in _entity_manager.chests:
 		if _entity_manager.opened_chests.has(net_id):
 			continue
+		var body := _entity_manager.entities.get(net_id) as Node3D
+		if body != null and player_pos.distance_to(body.position) <= _INTERACT_RANGE:
+			candidates[net_id] = body
+	for net_id: int in _entity_manager.bushes:
 		var body := _entity_manager.entities.get(net_id) as Node3D
 		if body != null and player_pos.distance_to(body.position) <= _INTERACT_RANGE:
 			candidates[net_id] = body
@@ -184,6 +189,12 @@ func _input(event: InputEvent) -> void:
 		Network.send(Protocol.pkt_cast(2, 0))  # Blink
 	if event.keycode == KEY_4:
 		Network.send(Protocol.pkt_cast(3, 0))  # Translocate
+	if event.keycode == KEY_5:
+		Network.send(Protocol.pkt_cast(4, 0))  # Heal (self)
+	if event.keycode == KEY_TAB:
+		# Auto action: the server repeats our last attack/spell until Tab
+		# again, another action, or it can't happen any more.
+		Network.send(Protocol.pkt_auto_action_toggle())
 	if event.keycode == KEY_SPACE:
 		Network.send(Protocol.pkt_action(Protocol.ACTION_REQ_JUMP))
 	if event.keycode == KEY_G:

@@ -11,7 +11,11 @@ uniform bool  use_vertex_colors = false;     // baked prelight in COLOR
 uniform float alpha_scissor = 0.0;           // 0 = off
 uniform vec3  highlight = vec3(0.0);         // TFX HIGHLIGHT add (from emission)
 uniform sampler2D env_tex : source_color, hint_default_black, filter_linear;
-uniform float env_strength = 0.0;            // sphere-map shine, §6.3
+// Sphere-map shine (§6.3), from the source material's metallic / roughness
+// (ps2.gd _env_params): metal reflects tinted by its own colour, glossy
+// non-metal reflects white. Same as ps2_world.gdshader.
+uniform float env_metal = 0.0;
+uniform float env_gloss = 0.0;
 
 varying vec3  v_light;      // with sun
 varying vec3  v_light_ns;   // without sun (in its shadow)
@@ -47,8 +51,8 @@ void fragment() {
 
 	vec3 base = ps2_to_gamma(tex.rgb) * albedo_color.rgb;
 	vec3 add  = highlight;
-	if (env_strength > 0.0) {
-		add += ps2_to_gamma(texture(env_tex, v_env_uv).rgb) * env_strength;
+	if (env_metal + env_gloss > 0.0) {
+		add += ps2_to_gamma(texture(env_tex, v_env_uv).rgb) * (env_metal * base + env_gloss);
 	}
 	if (ps2_godot_lighting) {
 		// Prelight in COLOR tints the texture, as vertex_color_use_as_albedo did.

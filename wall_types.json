@@ -1,16 +1,16 @@
 [
   {
     "id": 0,
-    "name": "Stone Wall",
-    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "name": "Stone",
+    "material": "res://assets/materials/walls/rock.tres",
     "climbable": false,
     "illusory": false,
-    "jitter": 0.54
+    "jitter": 1.0
   },
   {
     "id": 1,
     "name": "Cave Wall",
-    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "material": "res://assets/materials/walls/rock.tres",
     "climbable": false,
     "illusory": false,
     "jitter": 1.0
@@ -19,7 +19,7 @@
     "id": 2,
     "name": "Ladder",
     "mesh": "res://assets/props/Ladder.tscn",
-    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "material": "res://assets/materials/walls/rock.tres",
     "climbable": true,
     "illusory": false,
     "jitter": 1.0
@@ -27,7 +27,7 @@
   {
     "id": 3,
     "name": "Illusory Wall",
-    "texture": "res://assets/rock01_RockMossy0033_1_350.jpg",
+    "material": "res://assets/materials/walls/rock.tres",
     "climbable": false,
     "illusory": true,
     "jitter": 1.0
@@ -35,7 +35,7 @@
   {
     "id": 4,
     "name": "Vines",
-    "texture": "res://assets/textures/climbable_vine_wall.png",
+    "material": "res://assets/materials/walls/vines.tres",
     "climbable": true,
     "illusory": false,
     "jitter": 0.0
@@ -43,7 +43,7 @@
   {
     "id": 5,
     "name": "Marble",
-    "texture": "res://assets/textures/marble_wall.png",
+    "material": "res://assets/materials/walls/marble.tres",
     "climbable": false,
     "illusory": false,
     "jitter": 0.0
@@ -51,9 +51,41 @@
   {
     "id": 6,
     "name": "Black Marble",
-    "texture": "res://assets/textures/black_marble_wall.png",
+    "material": "res://assets/materials/walls/black_marble.tres",
     "climbable": false,
     "illusory": false,
-    "jitter": 0.3
+    "jitter": 0.0
+  },
+  {
+    "id": 7,
+    "name": "Wood Planks",
+    "material": "res://assets/materials/walls/wood_planks.tres",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 0.0
+  },
+  {
+    "id": 8,
+    "name": "Stone Wall",
+    "material": "res://assets/materials/walls/stone_wall.tres",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 0.0
+  },
+  {
+    "id": 9,
+    "name": "Iron",
+    "material": "res://assets/materials/iron.tres",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 0.0
+  },
+  {
+    "id": 10,
+    "name": "Wood",
+    "material": "res://assets/materials/walls/wood.tres",
+    "climbable": false,
+    "illusory": false,
+    "jitter": 0.0
   }
 ]

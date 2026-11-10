@@ -37,11 +37,30 @@ const CHEST_RESULT             := 0x23
 const ACTION_WINDUP            := 0x24
 const DELETE_CHARACTER_REQUEST  := 0x25
 const DELETE_CHARACTER_RESPONSE := 0x26
+const AUTO_ACTION_TOGGLE        := 0x29
+const AUTO_ACTION_STATE         := 0x2A
+const SKILL_UP                  := 0x33
+const CHARACTER_LIST_REQUEST    := 0x2B
+const CHARACTER_LIST            := 0x2C
+const CREATE_CHARACTER_REQUEST  := 0x2D
+const CREATE_CHARACTER_RESPONSE := 0x2E
+const PLAYER_CHARACTER          := 0x30
+const APPEARANCE_REQUEST        := 0x31
+const APPEARANCE                := 0x32
 
 # DeleteCharacterResponse results
 const DELETE_OK        := 0
 const DELETE_NOT_FOUND := 1  # not this account's character, or the login expired
 const DELETE_IN_GAME   := 2  # someone is playing it right now
+# CreateCharacterResponse results (CreateCharacterResult, stone_gaze src/network/protocol.h)
+const CREATE_OK         := 0
+const CREATE_NOT_FOUND  := 1  # the login expired
+const CREATE_NAME_TAKEN := 2
+const CREATE_INVALID    := 3  # bad name, a race that isn't playable, or not a starting talent
+const CREATE_ERROR      := 4  # the server's database refused it
+# Skin color (0xRRGGBBAA) sent on creation until character creation has a
+# picker — opaque white.
+const DEFAULT_SKIN_COLOR := 0xFFFFFFFF
 # ChestResult codes (ChestOpenResult, stone_gaze src/systems/chest.h)
 const CHEST_OPENED         := 0
 const CHEST_ALREADY_OPENED := 1
@@ -82,6 +101,8 @@ const UNIT_VALKYRIE  := 0x0A  # models.json "Valkyrie" on the server
 const UNIT_CHEST     := 0x0B  # models.json "Chest" — a placed chest, never moves
 const UNIT_CAVE_RAT  := 0x0C  # models.json "CaveRat"
 const UNIT_FROZEN_STARLIGHT := 0x0D  # models.json "FrozenStarlight" — interaction only; world.bin's static object is what's drawn
+const UNIT_WITCH     := 0x0E  # models.json "Witch" — the rat cave's boss
+const UNIT_BERRY_BUSH := 0x0F  # models.json "BerryBush" — E picks a berry; variant = berries left
 
 # ── Locomotion animation state (AnimState enum, network/protocol.h) ────────
 # Carried on SpawnUnit/UnitPos. Ground has no separate idle/walk/run signal —
@@ -108,6 +129,16 @@ const ACTION_JUMP    := 1
 const ACTION_ATTACK  := 2
 const ACTION_SPELL   := 3
 const ACTION_ABILITY := 13  # actions.json ability — how monsters attack
+# actions.json "type"s that train a skill (server systems/skills.h) — nothing animates them yet.
+const ACTION_FISHING    := 16
+const ACTION_CONJURING  := 17
+const ACTION_SMITHING   := 18
+const ACTION_ENCHANTING := 19
+const ACTION_GATHERING  := 20
+const ACTION_SCRIBING   := 21
+
+# ── Skills (SkillId enum, server components/skills.h) ──────────────────────
+const SKILL_NAMES := ["Fighting", "Shielding", "Casting", "Fishing", "Conjuring", "Smithing", "Enchanting", "Gathering", "Scribing"]
 
 # ── Action request opcodes (client → server) ───────────────────────────────
 const ACTION_REQ_JUMP   := 0x01  # ActionType::Jump
@@ -121,6 +152,7 @@ const EFFECT_PROJECTILE := 0x02
 const EFFECT_FLAME      := 0x03
 const EFFECT_FIREBALL   := 0x04
 const EFFECT_TELEPORT   := 0x05  # Blink/Translocate fired — no targets
+const EFFECT_HEAL       := 0x06  # Heal fired — the caster is its one target
 
 func _ready() -> void:
 	_load_item_types()
@@ -229,6 +261,38 @@ static func pkt_delete_character(token: String, char_id: int) -> PackedByteArray
 	pkt[0] = DELETE_CHARACTER_REQUEST
 	return pkt
 
+# A str on the wire: len(u8) + UTF-8 bytes.
+static func _append_str(pkt: PackedByteArray, s: String) -> void:
+	var bytes := s.to_utf8_buffer()
+	pkt.append(bytes.size())
+	pkt.append_array(bytes)
+
+# Only valid at character select.
+static func pkt_character_list(token: String) -> PackedByteArray:
+	var pkt := PackedByteArray([CHARACTER_LIST_REQUEST])
+	_append_str(pkt, token)
+	return pkt
+
+# Only valid at character select. `talent` is the starting (tier 0) talent;
+# `skin_color` is 0xRRGGBBAA.
+static func pkt_create_character(token: String, char_name: String, race: int, talent: int, skin_color: int) -> PackedByteArray:
+	var pkt := PackedByteArray([CREATE_CHARACTER_REQUEST])
+	_append_str(pkt, token)
+	_append_str(pkt, char_name)
+	pkt.append(race)
+	pkt.append(talent)
+	var offset := pkt.size()
+	pkt.resize(offset + 4)
+	pkt.encode_u32(offset, skin_color)
+	return pkt
+
+# A character's race and skin colour (Appearance back) — only while in the
+# world; at character select CharacterList already carries them.
+static func pkt_appearance_request(char_id: int) -> PackedByteArray:
+	var pkt := PackedByteArray([APPEARANCE_REQUEST, 0, 0, 0, 0])
+	pkt.encode_u32(1, char_id)
+	return pkt
+
 static func pkt_move_intent(dir: Vector2, rot_y: float, pitch: float) -> PackedByteArray:
 	var pkt := PackedByteArray()
 	pkt.resize(17)
@@ -293,6 +357,13 @@ static func pkt_slot_swap(slot_a: int, slot_b: int) -> PackedByteArray:
 	return pkt
 
 # (no payload) — server always moves MainHand's bag into the dedicated Bag slot.
+# (no payload) — Tab: server starts/stops repeating our last attack or spell.
+static func pkt_auto_action_toggle() -> PackedByteArray:
+	var pkt := PackedByteArray()
+	pkt.resize(1)
+	pkt[0] = AUTO_ACTION_TOGGLE
+	return pkt
+
 static func pkt_equip_bag_toggle() -> PackedByteArray:
 	var pkt := PackedByteArray()
 	pkt.resize(1)

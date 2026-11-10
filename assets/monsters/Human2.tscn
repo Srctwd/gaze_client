@@ -1,0 +1,55 @@
+[gd_scene format=3 uid="uid://d0n22l5l52mva"]
+
+[ext_resource type="PackedScene" uid="uid://y0nv3uiv2pdy" path="res://assets/meshes/HumanExample1.glb" id="1_iyo46"]
+
+[node name="HumanExample1" unique_id=1012439165 instance=ExtResource("1_iyo46")]
+transform = Transform3D(0.1, 0, 0, 0, 0.1, 0, 0, 0, 0.1, 0, 0, 0)
+
+[node name="BoneAttachment3D" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(1800071544) index="1" unique_id=1861581153]
+transform = Transform3D(-0.99984074, 0.017854497, -1.0983849e-07, -0.017854497, -0.99984074, -1.273201e-07, -1.12094256e-07, -1.253387e-07, 1, -0.8490588, -0.17170084, -0.15615322)
+bone_name = "hand.r"
+bone_idx = 11
+
+[node name="HandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="0" unique_id=133477100]
+transform = Transform3D(0.99999976, -8.7544336e-08, 8.742279e-08, -8.754432e-08, -0.99999976, 4.2632564e-14, 8.742282e-08, -1.4210855e-14, -1.0000004, -0.07482612, 0.24331045, 0.094387904)
+
+[node name="FirstPersonHandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D" index="1" unique_id=1448974245]
+transform = Transform3D(-0.99999976, -8.7090086e-08, 7.619405e-09, 0, 0.08715578, 0.9961951, -8.7422755e-08, 0.9961945, -0.087155834, 0.02, -1.1, 1.2)
+
+[node name="BoneAttachment3D2" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(1800071544) index="2" unique_id=1762151276]
+transform = Transform3D(1, 0, 2.3841858e-07, 0, 0.99999994, 0, -2.3841858e-07, 0, 1, -3.0916965e-09, 1.6367941, -0.15615302)
+bone_name = "Head"
+bone_idx = 3
+
+[node name="Head" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D2" index="0" unique_id=1062672505]
+transform = Transform3D(0.99999976, 0, -5.684342e-14, -2.1316272e-14, 0.99999964, 0, -2.842171e-14, 0, 0.99999976, -0.004956372, 0.27722454, 0.12817757)
+
+[node name="BoneAttachment3D3" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(1800071544) index="3" unique_id=6309272]
+transform = Transform3D(-0.99984074, -0.017854497, 1.0983849e-07, 0.017854497, -0.99984074, -1.273201e-07, 1.12094256e-07, -1.253387e-07, 1, 0.8490588, -0.17170066, -0.15615325)
+bone_name = "hand.l"
+bone_idx = 7
+
+[node name="OffHandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D3" index="0" unique_id=1846406187]
+transform = Transform3D(0.99999976, -8.754431e-08, 8.7422706e-08, -8.754435e-08, -0.99999976, 0, 8.742281e-08, -1.4210855e-14, -0.99999994, -0.06314123, 0.31076574, 0.17804888)
+
+[node name="FirstPersonOffHandGrip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D3" index="1" unique_id=2031261174]
+transform = Transform3D(-0.99999976, 8.7090086e-08, -7.619401e-09, 0, 0.08715578, 0.99619466, 8.7422755e-08, 0.9961945, -0.0871558, 0.02, -1.1, 1.2)
+
+[node name="BoneAttachment3D4" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(1800071544) index="4" unique_id=1145902753]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.23584676, -0.15615305)
+bone_name = "Chest"
+bone_idx = 1
+
+[node name="Back" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D4" index="0" unique_id=1932168608]
+transform = Transform3D(0.9999998, 0, 0, 0, 0.9999998, 8.526513e-14, 0, -8.526513e-14, 0.9999998, -5.364418e-07, 0.95054245, -0.57393813)
+
+[node name="HitPoint" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D4" index="1" unique_id=24862352]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.36635876, 0)
+
+[node name="BoneAttachment3D5" type="BoneAttachment3D" parent="Armature/Skeleton3D" parent_id_path=PackedInt32Array(1800071544) index="5" unique_id=112339817]
+transform = Transform3D(2.3841858e-07, 0.91281843, 0.408366, 1.7881393e-07, -0.40836602, 0.91281843, 1, -1.192093e-07, -2.384186e-07, 0, -2.3841858e-07, -0.15615307)
+bone_name = "hip.l"
+bone_idx = 12
+
+[node name="Hip" type="Marker3D" parent="Armature/Skeleton3D/BoneAttachment3D5" index="0" unique_id=1235288726]
+transform = Transform3D(1.0000002, 9.31351e-10, 5.9604616e-08, 2.980238e-08, -2.0861623e-07, -0.99999976, -5.587964e-09, 1.0000002, -4.659652e-14, 0.41474122, 0.5064443, -0.003758192)

@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" uid="uid://eoaumbpljacp" path="res://assets/meshes/snake.glb" id="1_snake"]
+
+[node name="Snake" instance=ExtResource("1_snake")]
+transform = Transform3D(0, 0, -0.15, 0, 0.15, 0, 0.15, 0, 0, 0, 0, -0.22)
+metadata/swing_impact = 0.5
+
+[node name="HitPointAttachment" type="BoneAttachment3D" parent="Armature/Skeleton3D"]
+bone_name = "Bone.007"
+bone_idx = 6
+
+[node name="HitPoint" type="Marker3D" parent="Armature/Skeleton3D/HitPointAttachment"]

@@ -11,3 +11,7 @@ hit_sound = "rock"
 projectile_scene = ExtResource("3_proj")
 
 [node name="HandGrip" type="Marker3D" parent="." index="1" unique_id=710417960]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="FirstPersonGrip" type="Marker3D" parent="." unique_id=412169862]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)

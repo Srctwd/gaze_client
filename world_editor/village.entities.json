@@ -1,0 +1,8 @@
+[
+  { "type": "Chest", "id": 1, "x": 25.5, "z": 10.5, "rot_y": 0.0, "items": [{"item":"Tunic"}] },
+  { "type": "Chest", "id": 2, "x": 25.5, "y": 4.4, "z": 16.5, "rot_y": 0.0, "items": [{"item":"Torch"}] },
+  { "type": "Chest", "id": 3, "x": 11.0, "y": -5.5, "z": 33.4, "rot_y": 0.0, "items": [{"item":"Doublet"}] },
+  { "type": "BerryBush", "x": 72.0, "z": 66.0, "max": 12 },
+  { "type": "BerryBush", "x": 80.0, "z": 74.0, "rot_y": 1.2, "max": 12 },
+  { "type": "BerryBush", "x": 86.0, "z": 67.0, "rot_y": 2.5, "max": 12 }
+]
